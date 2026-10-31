@@ -46,7 +46,10 @@ def active_language() -> str | None:
 
 # Lobby (Aventura / Adventure tab)
 PATROL = _l("patrulla", "patrol")                    # also used to detect the language
-STARS_BUTTON = _l("de estrellas", "challenge")       # "Desafío de Estrellas" / "Star Challenge"
+# Full name only. English OCR splits the lobby control into "Star" + "Challenge"
+# (screens.star_challenge_button). A bare "challenge" also matches Wish Challenge,
+# and a Boss Rush banner's "Challenge" button, which is not this control.
+STARS_BUTTON = _l("de estrellas", "star challenge")  # "Desafío de Estrellas" / "Star Challenge"
 ELITE_ON = _l("activado", "on")                      # exact
 ELITE_OFF = _l("apagado", "off")                     # exact
 START_NORMAL = _l("inicio", "start")                 # exact; also the elite dialog's start button

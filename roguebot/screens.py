@@ -58,7 +58,48 @@ def parse_lobby(texts: list[Text]) -> Lobby | None:
     if not start:
         return None
     title = next((t.text for t in texts if parse_level_number(t.text) is not None), None)
-    return Lobby(mode, title, start, find(texts, L.STARS_BUTTON), parse_energy(texts), has_elite)
+    return Lobby(mode, title, start, star_challenge_button(texts, start), parse_energy(texts), has_elite)
+
+
+# Event tiles that share a word with Star Challenge. Never the lobby control above Start.
+_EVENT_TILES = ("boss rush", "boss challenge", "wish challenge", "chest rush", "egg rush")
+
+
+def _event_tile(t: Text) -> bool:
+    return any(name in t.norm for name in _EVENT_TILES)
+
+
+def star_challenge_button(texts: list[Text], start: Text) -> Text | None:
+    """The lobby's Star Challenge / Desafío de Estrellas control, in the row just above Start.
+
+    Not Boss Rush and not another event (Wish Challenge, Chest Rush, Egg Rush). English OCR
+    splits the label into "Star" (sometimes "i-Star") and "Challenge", so a bare "Challenge"
+    only counts there, with "Star" on the line above it. "Start" contains "star" but sits
+    below this row, and "Starter Pack" is the left-column icon."""
+    sx, sy = start.center
+    above_lo, above_hi = config.STAR_CHALLENGE_ABOVE
+
+    def in_row(t: Text) -> bool:
+        x, y = t.center
+        return above_lo <= sy - y <= above_hi and abs(x - sx) <= config.STAR_CHALLENGE_DX and not _event_tile(t)
+
+    phrase = [t for t in texts if matches(t, L.STARS_BUTTON) and in_row(t)]
+    if phrase:
+        return min(phrase, key=lambda t: abs(t.center[0] - sx))
+    for t in texts:
+        if t.norm != "challenge" or not in_row(t):
+            continue
+        if any(_star_line(o, t) for o in texts):
+            return t
+    return None
+
+
+def _star_line(label: Text, challenge: Text) -> bool:
+    """The "Star" half of a split "Star Challenge" label: just above the "Challenge" line."""
+    if "star" not in label.norm or "starter" in label.norm or _event_tile(label):
+        return False
+    return (abs(label.center[0] - challenge.center[0]) <= config.STAR_WORD_DX
+            and 0 <= challenge.center[1] - label.center[1] <= config.STAR_WORD_ABOVE)
 
 
 def is_star_list(texts: list[Text]) -> bool:

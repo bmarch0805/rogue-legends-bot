@@ -232,8 +232,16 @@ open class Navigator(
             val closeX by lazy { Screens.closeButton(c.first) }  // template matching: only when needed
             val back by lazy { ModeScreens.backArrow(c.first) }
             val end by lazy { endButton(c.first, texts) }
+            // Quick Patrol is a sheet over the Patrol menu. Both draw an ✕; the menu's is dimmed and
+            // does not receive the tap.
+            val sheet = ModeScreens.quickPatrolClose(c.first, texts)
             when {
                 Screens.isLoading(texts) -> clock.sleep(Config.UI_SETTLE)
+                sheet != null -> { Log.info("Closing Quick Patrol"); device.tap(sheet) }
+                ModeScreens.quickPatrolOpen(texts) -> {
+                    Log.info("Quick Patrol is open; not closing the Patrol menu under it")
+                    clock.sleep(Config.UI_SETTLE)
+                }
                 closeText != null -> { Log.info("Closing popup"); tapText(closeText) }
                 closeX != null -> { Log.info("Closing popup (✕)"); device.tap(closeX!!) }
                 // A level or mode fight ended and nothing took its result (a part that failed in it).

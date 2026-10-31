@@ -35,7 +35,10 @@ object L {
 
     // Lobby (Aventura / Adventure tab)
     val PATROL = l("patrulla", "patrol")
-    val STARS_BUTTON = l("de estrellas", "challenge")
+    // Full name only. English OCR splits the lobby control into "Star" + "Challenge"
+    // (Screens.starChallengeButton). A bare "challenge" also matches Wish Challenge
+    // and a Boss Rush banner's "Challenge" button.
+    val STARS_BUTTON = l("de estrellas", "star challenge")
     val ELITE_ON = l("activado", "on")
     val ELITE_OFF = l("apagado", "off")
     val START_NORMAL = l("inicio", "start")

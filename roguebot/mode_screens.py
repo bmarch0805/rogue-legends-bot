@@ -129,6 +129,59 @@ def _lightning_icon(img: np.ndarray, label: Text) -> bool:
     return cyan.mean() > config.QUICK_PATROL_CYAN_MIN
 
 
+def quick_patrol_title(texts: list[Text]) -> Text | None:
+    """The Quick Patrol sheet's own title (banner or "immediately claim" line).
+
+    The Patrol menu underneath has a button of the same name, in PATROL_BUTTONS_Y. That button
+    is not this title: while the sheet is up its close tap must not go to the menu's ✕."""
+    hits = []
+    if body := find(texts, L.QUICK_PATROL_TEXT):
+        hits.append(body)
+    hits.extend(t for t in texts if matches(t, L.QUICK_PATROL) and t.center[1] < config.PATROL_BUTTONS_Y[0])
+    return max(hits, key=lambda t: t.center[1]) if hits else None
+
+
+def quick_patrol_open(texts: list[Text]) -> bool:
+    """The Quick Patrol sheet is in front of the Patrol menu."""
+    return quick_patrol_title(texts) is not None
+
+
+def _close_buttons(img: np.ndarray) -> list[tuple[int, int]]:
+    """Every popup ✕ at the usual size, top to bottom. Quick Patrol leaves the Patrol menu's ✕
+    visible under the sheet, so the single best match can be the one that does not close it."""
+    from roguebot.screens import _CLOSE_X
+    res = cv2.matchTemplate(img, _CLOSE_X, cv2.TM_CCOEFF_NORMED)
+    th, tw = _CLOSE_X.shape[:2]
+    found = []
+    for _ in range(4):
+        _, score, _, (x, y) = cv2.minMaxLoc(res)
+        if score < config.CLOSE_X_MIN_SCORE:
+            break
+        found.append((x + tw // 2, y + th // 2))
+        res[max(0, y - th // 2):y + th // 2 + 1, max(0, x - tw // 2):x + tw // 2 + 1] = -1
+    found.sort(key=lambda p: p[1])
+    return found
+
+
+def _close_x_lit(img: np.ndarray, center: tuple[int, int]) -> bool:
+    """The sheet in front draws a bright ✕. The Patrol menu's ✕ stays on screen under Quick Patrol,
+    dimmed (~18 vs ~186), and a tap on it does not dismiss the sheet."""
+    x, y = center
+    h, w = img.shape[:2]
+    roi = img[max(0, y - 40):min(h, y + 40), max(0, x - 40):min(w, x + 40)]
+    return roi.size > 0 and float(roi.mean()) >= config.CLOSE_X_LIT_MIN
+
+
+def quick_patrol_close(img: np.ndarray | None, texts: list[Text]) -> tuple[int, int] | None:
+    """The lit ✕ of the Quick Patrol sheet. None while that sheet is not up, and never the dimmed
+    Patrol-menu ✕ underneath it."""
+    title = None if img is None else quick_patrol_title(texts)
+    if title is None:
+        return None
+    lit = [b for b in _close_buttons(img) if b[1] > title.center[1] and _close_x_lit(img, b)]
+    return min(lit, key=lambda p: p[1]) if lit else None
+
+
 def parse_quick_patrol(img: np.ndarray, texts: list[Text]) -> QuickPatrol | None:
     """Quick patrol popup: a free video and an energy option, each with "Remaining: N"."""
     if not find(texts, L.QUICK_PATROL_TEXT):

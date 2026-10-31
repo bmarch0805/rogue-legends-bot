@@ -9,7 +9,7 @@ import cv2
 
 from roguebot import config, labels
 from roguebot.device import Device
-from roguebot.mode_screens import back_arrow, parse_fight_result
+from roguebot.mode_screens import back_arrow, parse_fight_result, quick_patrol_close, quick_patrol_open
 from roguebot.screens import (Card, LevelScreen, Lobby, Mode, classify_level_screen, close_button, close_button_any_size,
                               footer_visible, is_loading, is_star_list, lobby_behind, outside_tap_clear,
                               parse_elite_dialog, parse_energy, parse_energy_popup, parse_lobby, parse_star_list, popup_close,
@@ -248,7 +248,17 @@ class Navigator:
             # Never tap blindly: popups can hold purchase buttons.
             close_text, close_x = popup_close(texts), close_button(img)
             end = self._end_button(img, texts)
+            # Quick Patrol is a sheet over the Patrol menu. Both draw an ✕; the menu's is dimmed and
+            # does not receive the tap. Closing that one loops on "Closing popup (✕)" until someone
+            # dismisses Quick Patrol by hand.
+            sheet = quick_patrol_close(img, texts)
             if is_loading(texts):
+                time.sleep(config.UI_SETTLE)
+            elif sheet:
+                log.info("Closing Quick Patrol")
+                self.device.tap(*sheet)
+            elif quick_patrol_open(texts):
+                log.info("Quick Patrol is open; not closing the Patrol menu under it")
                 time.sleep(config.UI_SETTLE)
             elif close_text:
                 log.info("Closing popup")
