@@ -86,6 +86,8 @@ object L {
     val SOLD_OUT = l(listOf("agotado", "vendido"), listOf("sold out", "soldout"))
     val BLACK_MARKET = l("mercado negro", "black market")
     val LEAVE = l("salir", listOf("exit", "leave", "walk away"))
+    val CAMPFIRE_REST = l("descansar")   // exact; campfire heart. English button not seen.
+    val CAMPFIRE_TRAIN = l("entrenar")   // exact; campfire book. English button not seen.
     val FORTUNE_TELLER = l("adivino", "fortune teller")
     val FIGHT_ROUND = l("ronda", "round")
     val REVIVE_PROMPT = l("revivir ahora", "revive")

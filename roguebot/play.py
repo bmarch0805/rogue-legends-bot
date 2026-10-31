@@ -5,6 +5,7 @@ Mode-agnostic: normal and elite levels share the same gameplay.
 
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -14,7 +15,7 @@ from roguebot.build import Build, BuildState, choose, shop_order
 from roguebot.device import Device
 from roguebot.screens import (LevelScreen, LevelState, SkillCard, classify_level_screen, game_speed,
                               parse_fortune_teller, parse_shop, parse_skill_cards, skill_reroll)
-from roguebot.skills import Catalog, Skill
+from roguebot.skills import Catalog, Skill, infer_tags
 from roguebot.vision import Ocr, find
 
 log = logging.getLogger(__name__)
@@ -130,7 +131,17 @@ class Player:
                 time.sleep(config.POLL_INTERVAL)
 
     def _skill(self, card: SkillCard) -> Skill:
-        return self.catalog.lookup(card.name, card.description, card.rarity, labels.active_language())
+        """Catalog entry for this card. A user-locked tag (auto false) wins; otherwise a damage type
+        read on the card itself wins over a stale saved tag, so a skill named shuriken is shuriken."""
+        known = self.catalog.lookup(card.name, card.description, card.rarity, labels.active_language())
+        if not known.auto:
+            return known
+        damage_type, nature, role = infer_tags(card.name, card.description)
+        if damage_type and damage_type != known.damage_type:
+            log.info("Skill %s read as %s from its card (saved tag %s)", card.name, damage_type,
+                     known.damage_type or "-")
+            return replace(known, damage_type=damage_type, nature=nature, role=role)
+        return known
 
     def _pick_skill(self, texts) -> tuple[int, int] | None:
         """Tap point of the card the build wants, or of the reroll button. None if no card was read."""
@@ -149,8 +160,9 @@ class Player:
         if offer != self._last_offer:  # the same offer again = the last tap did not land: count it once
             self._state.take(skills[i])
         self._last_offer = offer
-        log.info("Skill: %s (%s, %s, %s)", skills[i].name, skills[i].rarity, skills[i].damage_type or "-",
-                 skills[i].role)
+        log.info("Skill: %s (%s, %s, %s); cards %s", skills[i].name, skills[i].rarity,
+                 skills[i].damage_type or "-", skills[i].role,
+                 [f"{s.name}:{s.damage_type or '-'}" for s in skills])
         return config.SCREEN_SIZE[0] // 2, cards[i].tag.center[1] + config.SKILL_TAP_BELOW_RARITY
 
     def _shop(self, texts) -> None:
@@ -163,16 +175,19 @@ class Player:
             cards = [c for c in shop.cards if not c.sold and c.cost is not None and c.name not in tapped]
             skills = [self._skill(c) for c in cards]
             order = shop_order(skills, self.build, self._state,
-                               can_reroll=shop.free_reroll is not None and not rerolled)
+                               can_reroll=shop.free_reroll is not None and not rerolled, fill=False)
             if order is None:
-                log.info("Shop: no wanted skill in %s, free reroll", [s.name for s in skills])
+                log.info("Shop: no preferred skill in %s, free reroll", [s.name for s in skills])
                 self.device.tap(*shop.free_reroll.center)
                 rerolled = True
+            elif not order:
+                return  # nothing of the build, and the reroll is not free: leave the coins
             else:
                 i = next((i for i in order if cards[i].cost <= shop.money), None)
                 if i is None:
                     return
-                log.info("Shop: buying %s for %d (coins %d)", skills[i].name, cards[i].cost, shop.money)
+                log.info("Shop: buying %s (%s) for %d (coins %d)", skills[i].name,
+                         skills[i].damage_type or skills[i].role, cards[i].cost, shop.money)
                 self.device.tap(*cards[i].price.center)
                 tapped.add(cards[i].name)
                 self._state.take(skills[i])

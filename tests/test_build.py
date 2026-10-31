@@ -125,5 +125,28 @@ def test_shop_order_rerolls_when_free_and_nothing_fits():
     build = Build("magic")
     assert shop_order([VENOM, SHIELD], build, BuildState(), can_reroll=True) is None
     assert shop_order([VENOM, SHIELD, FIRE], build, BuildState(), can_reroll=True)[0] == 2
-    # Not free: wanted first, then the rest (rarest first) so leftover coins still buy something.
+    # Dojo/raid (fill) still take the rest after the wanted skill. The level shop does not.
     assert shop_order([VENOM, sk("l", "venom", rarity="legendary"), FIRE], build, BuildState(), False) == [2, 1, 0]
+
+
+def test_shuriken_beats_a_rarer_type_and_the_top_card():
+    build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+    shuriken = sk("toss", "shuriken")
+    legendary = sk("poison", "venom", rarity="legendary")
+    assert choose([ATK, legendary, shuriken], build, BuildState(), can_reroll=True) == 2
+
+
+def test_untyped_damage_rerolls_before_taking_the_top_card():
+    build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+    offer = [ATK, FIRE, SHIELD]
+    assert choose(offer, build, BuildState(), can_reroll=True) is None
+    assert choose(offer, build, BuildState(), can_reroll=False) == 0  # no reroll left: the untyped physical
+
+
+def test_shop_does_not_buy_off_build_cards():
+    build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+    shuriken = sk("toss", "shuriken")
+    venom = sk("poison", "venom", rarity="legendary")
+    assert shop_order([ATK, venom, shuriken, SHIELD], build, BuildState(), False, fill=False) == [2, 1]
+    assert shop_order([ATK, SHIELD], build, BuildState(), True, fill=False) is None  # reroll: no listed type
+    assert shop_order([ATK, SHIELD], build, BuildState(), False, fill=False) == [0]  # then the untyped card

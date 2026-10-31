@@ -97,6 +97,10 @@ class LogicTest {
         val physical = Build("physical", listOf("venom", "bleed", "shuriken", "ice", "fire", "lightning"))
         assertEquals(2, Choice.choose(listOf(atk, fire, venom), physical, BuildState(), false))
         assertEquals(0, Choice.choose(listOf(atk, fire, shield), physical, BuildState(), false))
+        assertNull(Choice.choose(listOf(atk, fire, shield), physical, BuildState(), true))  // reroll, don't take the top untyped
+        val shurikenFirst = Build("physical", listOf("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+        val shuriken = sk("toss", "shuriken")
+        assertEquals(2, Choice.choose(listOf(atk, sk("poison", "venom", rarity = "legendary"), shuriken), shurikenFirst, BuildState(), true))
         val fireFirst = Build("magic", listOf("fire", "ice", "lightning", "shuriken", "venom", "bleed"))
         assertEquals(1, Choice.choose(listOf(sk("big ice", "ice", rarity = "legendary"), fire), fireFirst, BuildState(), false))
         assertEquals(1, Choice.choose(listOf(fire, sk("big fire", "fire", rarity = "legendary")), fireFirst, BuildState(), false))
@@ -130,6 +134,10 @@ class LogicTest {
         assertNull(Choice.shopOrder(listOf(venom, shield), build, BuildState(), true))
         assertEquals(2, Choice.shopOrder(listOf(venom, shield, fire), build, BuildState(), true)!![0])
         assertEquals(listOf(2, 1, 0), Choice.shopOrder(listOf(venom, sk("l", "venom", rarity = "legendary"), fire), build, BuildState(), false))
+        val physical = Build("physical", listOf("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+        val shuriken = sk("toss", "shuriken")
+        assertEquals(listOf(2, 1), Choice.shopOrder(listOf(atk, venom, shuriken, shield), physical, BuildState(), false, fill = false))
+        assertNull(Choice.shopOrder(listOf(atk, shield), physical, BuildState(), true, fill = false))
     }
 
     @Test

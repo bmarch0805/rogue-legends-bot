@@ -1,5 +1,6 @@
 """Screen recognition: turns OCR output into typed screen states. No input is sent from here."""
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -11,6 +12,8 @@ import numpy as np
 from roguebot import config, labels as L
 from roguebot.skills import RARITY_NAMES
 from roguebot.vision import Ocr, Text, find, match_template, matches, parse_level_number
+
+log = logging.getLogger(__name__)
 
 
 class Mode(Enum):
@@ -274,7 +277,7 @@ class LevelScreen(Enum):
     BOARD_READY = "board_ready"  # red dice button active
     AUTO_PLAY = "auto_play"      # green dice "Toca para Detener": the game rolls by itself; never tap it (stops it)
     FIGHT = "fight"              # "Ronda N/30", plays by itself
-    EVENT = "event"              # tile event with options; we always pick "Salir" (leave)
+    EVENT = "event"              # tile event; leave, or campfire: upgrade unless HP is under 40%
     SHOP = "shop"                # shop tile; we buy nothing and press "Salir"
     LEAVE = "leave"              # screens we just exit: a lone "Salir"
     FORTUNE_TELLER = "fortune_teller"  # "Adivino": 100/70/40% balls paid with orbs; tap = its back arrow
@@ -358,10 +361,97 @@ def _option_enabled(img: np.ndarray, label: Text) -> bool:
     return roi[..., 1].mean() > config.EVENT_DISABLED_MAX_SATURATION
 
 
+# "107,2k/152,5k" (comma or dot decimals). A k/m/b suffix is required so the energy "12/32" never matches.
+_HP_LINE = re.compile(r"^(\d+(?:[.,]\d+)?)([kmb])?/(\d+(?:[.,]\d+)?)([kmb])?$")
+_HEAL_BODY = re.compile(r"(restaura\w*|restaur\w*|heal|restore|curar\w*).{0,30}hp|hp.{0,20}(restaura|heal|restore|curar)")
+_UPGRADE_BODY = re.compile(
+    r"(mejora\w*|upgrade|improve|level up).{0,40}(habilidad|skill)"
+    r"|(habilidad|skill).{0,30}(existente|existing)")
+_HP_SCALE = {None: 1.0, "k": 1e3, "m": 1e6, "b": 1e9}
+
+
+def _scaled_hp(num: str, suffix: str | None) -> float | None:
+    try:
+        value = float(num.replace(",", "."))
+    except ValueError:
+        return None
+    return value * _HP_SCALE[suffix]
+
+
+def parse_hp_ratio(texts: list[Text]) -> float | None:
+    """Current/max HP from the top-bar heart line, e.g. "107,2k/152,5k" -> 0.703.
+
+    None when that line is missing or unreadable. The campfire heal option's "39% de HP" is how much
+    the rest restores, never the current HP, and it sits far below the top bar.
+    """
+    for t in texts:
+        if t.center[1] > config.TOP_BAR_MAX_Y or not _in_range(t.center[0], config.HP_X):
+            continue
+        m = _HP_LINE.match(t.norm.replace(" ", ""))
+        if not m or not (m.group(2) or m.group(4)):
+            continue
+        current, maximum = _scaled_hp(m.group(1), m.group(2)), _scaled_hp(m.group(3), m.group(4))
+        if current is None or maximum is None or maximum <= 0:
+            continue
+        return current / maximum
+    return None
+
+
+def _column_blob(label: Text, texts: list[Text]) -> str:
+    """The option label plus the body text in its column (below the icon)."""
+    parts = [label.norm]
+    for t in texts:
+        if t.center[1] <= label.center[1]:
+            continue
+        if abs(t.center[0] - label.center[0]) <= config.EVENT_COLUMN_X:
+            parts.append(t.norm)
+    return " ".join(parts)
+
+
+def _is_heal_option(label: Text, blob: str) -> bool:
+    """Campfire heart. Spanish label seen: "Descansar". English is matched from the body ("restore/heal … HP")."""
+    return matches(label, L.CAMPFIRE_REST, exact=True) or _HEAL_BODY.search(blob) is not None
+
+
+def _is_upgrade_option(label: Text, blob: str) -> bool:
+    """Campfire book. Spanish label seen: "Entrenar". English is matched from the body ("upgrade/improve … skill")."""
+    return matches(label, L.CAMPFIRE_TRAIN, exact=True) or _UPGRADE_BODY.search(blob) is not None
+
+
+def _campfire_label(labels: list[Text], texts: list[Text]) -> Text | None:
+    """Which campfire option to tap, or None if this event is not the rest/campfire.
+
+    Default is the skill upgrade. Restore HP only when the top-bar heart line is under 40%.
+    If that line cannot be read, upgrade: do not invent an HP from the heal amount.
+    """
+    heal = upgrade = None
+    for label in labels:
+        blob = _column_blob(label, texts)
+        if upgrade is None and _is_upgrade_option(label, blob):
+            upgrade = label
+        elif heal is None and _is_heal_option(label, blob):
+            heal = label
+    if heal is None and upgrade is None:
+        return None
+    ratio = parse_hp_ratio(texts)
+    if ratio is not None and ratio < config.CAMPFIRE_HEAL_BELOW and heal is not None:
+        log.info("Campfire: HP %.1f%% < 40%%, restoring HP", ratio * 100)
+        return heal
+    if upgrade is not None:
+        if ratio is None:
+            log.info("Campfire: HP unreadable, upgrading skill")
+        else:
+            log.info("Campfire: HP %.1f%%, upgrading skill", ratio * 100)
+        return upgrade
+    log.info("Campfire: skill upgrade not readable, restoring HP")
+    return heal
+
+
 def _event_option(img: np.ndarray, texts: list[Text]) -> tuple[int, int] | None:
     """Tile event (title band + option labels above icons): where to tap, or None if not an event.
 
-    Takes "Salir" (leave) when offered, else the leftmost option that is not greyed out.
+    Campfire ("Un Momento de Descanso"): upgrade the skill, unless the top-bar HP is under 40%.
+    Other events: "Salir" (leave) when offered, else the leftmost option that is not greyed out.
     """
     has_title = any(_in_range(t.center[1], config.EVENT_TITLE_Y)
                     and abs(t.center[0] - config.SCREEN_SIZE[0] // 2) < config.EVENT_TITLE_CENTER_TOLERANCE
@@ -370,7 +460,9 @@ def _event_option(img: np.ndarray, texts: list[Text]) -> tuple[int, int] | None:
     if not (has_title and labels):
         return None
     labels = [t for t in labels if _option_enabled(img, t)] or labels
-    label = next((t for t in labels if matches(t, L.LEAVE, exact=True)), min(labels, key=lambda t: t.center[0]))
+    label = _campfire_label(labels, texts)
+    if label is None:
+        label = next((t for t in labels if matches(t, L.LEAVE, exact=True)), min(labels, key=lambda t: t.center[0]))
     return label.center[0], label.center[1] + config.EVENT_ICON_BELOW_LABEL
 
 

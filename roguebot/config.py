@@ -41,6 +41,7 @@ FOOTER_COLOR_TOLERANCE = 12  # popups darken these to ~(8, 6, 12)
 # Top bar
 TOP_BAR_MAX_Y = 150
 ENERGY_X = (700, 1000)       # x range of the "12/32" energy counter
+HP_X = (300, 720)            # heart line "107,2k/152,5k" (current/max). Not the heal option's "39% de HP".
 
 # Energy popup (top bar energy icon)
 ENERGY_ICON = (745, 85)
@@ -89,7 +90,9 @@ EVENT_TITLE_Y = (1360, 1440)             # tile event title band, e.g. "Carro de
 EVENT_TITLE_CENTER_TOLERANCE = 60
 EVENT_LABEL_Y = (1750, 1840)             # option labels ("Salir", "Descansar"...)
 EVENT_ICON_BELOW_LABEL = 238             # option icon center, below its label
+EVENT_COLUMN_X = 160                     # option body text sits in the same column as its label
 EVENT_DISABLED_MAX_SATURATION = 70       # mean HSV saturation of a greyed (disabled) option icon: ~34; enabled >=117
+CAMPFIRE_HEAL_BELOW = 0.40               # "Un Momento de Descanso": restore HP only under this fraction of max HP
 FLIP_CARDS = [(x, y) for y in (1280, 1560, 1840) for x in (299, 579, 859, 1139)]  # 4x3 grid centers
 FLIP_FACE_DOWN_MIN_FRACTION = 0.25       # measured: 0.39 face down, 0.08 face up
 FORTUNE_TELLER_BACK = (293, 2280)        # back arrow, bottom-left

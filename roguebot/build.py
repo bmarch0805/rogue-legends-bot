@@ -2,11 +2,15 @@
 
 Rules (from the user):
 - Wanted skills are damage skills of the preferred nature (physical/magic), best damage type first
-  (the user's order; untyped physical skills after the listed types), then rarer, then the top card.
+  (the user's order; untyped skills after the listed types), then rarer, then the top card.
+  A named type (shuriken, venom, ...) beats a higher rarity and the top card.
 - With "support every N": after N damage skills, a support skill is wanted instead. If none is
   offered, take the damage skill and take the next support skill that shows up.
-- Nothing wanted on offer: use the reroll if there is one. Still nothing: the rarest card, top first.
-- Shop: the same ranking (reroll only while free), then buy in that order whatever the coins allow.
+- A level-up with no listed damage type (only untyped or off-nature cards): use the reroll if there
+  is one. Still nothing: untyped damage of the right nature, else the rarest card, top first.
+- Shop: buy only the wanted skills, in that order, while the coins allow. Do not spend coins on
+  off-build cards. A free reroll is used when no listed damage type is offered (not when a weaker
+  same-nature card is merely cheaper). Dojo and raid still fill remaining picks from the other cards.
 """
 
 from dataclasses import dataclass, field
@@ -59,19 +63,40 @@ def fallback(skills: list[Skill]) -> list[int]:
     return sorted(range(len(skills)), key=lambda i: (_rarity(skills[i]), i))
 
 
+def _preferred(skills: list[Skill], build: Build, state: BuildState) -> list[int]:
+    """Wanted skills that name a damage type, or a support skill when one is due.
+
+    Untyped damage is left out: it is the top-of-screen physical fallback, not the build.
+    """
+    return [i for i in ranked(skills, build, state) if skills[i].role == SUPPORT or skills[i].damage_type]
+
+
 def choose(skills: list[Skill], build: Build, state: BuildState, can_reroll: bool) -> int | None:
     """Index of the card to take, or None to use the reroll."""
-    wanted = ranked(skills, build, state)
-    if wanted:
-        return wanted[0]
+    preferred = _preferred(skills, build, state)
+    if preferred:
+        return preferred[0]
     if can_reroll:
         return None
+    wanted = ranked(skills, build, state)
+    if wanted:  # untyped damage of the right nature, and no reroll left
+        return wanted[0]
     return fallback(skills)[0]
 
 
-def shop_order(skills: list[Skill], build: Build, state: BuildState, can_reroll: bool) -> list[int] | None:
-    """Buying order for the shop's skills, or None to use the (free) reroll first."""
+def shop_order(skills: list[Skill], build: Build, state: BuildState, can_reroll: bool,
+               fill: bool = True) -> list[int] | None:
+    """Buying order for the shop's skills, or None to use the (free) reroll first.
+
+    `fill` (dojo and raid, which must pick several) keeps the other cards after the wanted ones.
+    The level shop leaves them out, so leftover coins are not spent off-build.
+    """
     wanted = ranked(skills, build, state)
     if not wanted and can_reroll:
         return None
-    return wanted + [i for i in fallback(skills) if i not in wanted]
+    if fill:
+        return wanted + [i for i in fallback(skills) if i not in wanted]
+    preferred = _preferred(skills, build, state)
+    if not preferred and can_reroll:
+        return None
+    return preferred or wanted

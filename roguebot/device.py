@@ -67,9 +67,28 @@ def overlay_packages(dumpsys_windows: str) -> list[str]:
     return found
 
 
+def wait_while_paused(pause: threading.Event | None, stop: threading.Event | None) -> bool:
+    """Block while `pause` is set. Stop still ends the run. True if the call actually waited.
+
+    Checked before every screenshot and tap, so Resume continues the same run on whatever screen
+    the user left up (for example the star-challenge card they scrolled to by hand).
+    """
+    if pause is None or not pause.is_set():
+        return False
+    log.info("Paused; no taps until Resume")
+    while pause.is_set():
+        if stop is not None and stop.is_set():
+            raise Stopped("Stopped by the user")
+        time.sleep(0.2)  # Event.wait returns at once while the flag is set
+    log.info("Resumed")
+    return True
+
+
 class Device:
-    def __init__(self, serial: str = config.SERIAL, stop: threading.Event | None = None, adb: str = config.ADB_PATH):
+    def __init__(self, serial: str = config.SERIAL, stop: threading.Event | None = None, adb: str = config.ADB_PATH,
+                 pause: threading.Event | None = None):
         self._stop = stop
+        self._pause = pause
         # MuMu's own adb starts the server (if needed) and connects to the instance.
         subprocess.run([adb, "connect", serial], capture_output=True, check=True, timeout=config.ADB_TIMEOUT)
         self._d = adbutils.AdbClient().device(serial)
@@ -85,15 +104,27 @@ class Device:
         self._active = time.monotonic()
 
     def _check_stop(self) -> None:
+        # Pause time is not a freeze: the user may sit on one frame while they fix the game.
+        if wait_while_paused(getattr(self, "_pause", None), getattr(self, "_stop", None)):
+            self._touch()
         if self._stop is not None and self._stop.is_set():
             raise Stopped("Stopped by the user")
 
     def wait(self, seconds: float) -> None:
-        """Sleep, but raise Stopped as soon as the stop Event is set."""
-        if self._stop is None:
-            time.sleep(seconds)
-        elif self._stop.wait(seconds):
-            raise Stopped("Stopped by the user")
+        """Sleep, but pause while asked, and raise Stopped as soon as the stop Event is set.
+
+        Time spent paused does not count toward `seconds`.
+        """
+        left = seconds
+        while left > 0:
+            self._check_stop()
+            step = min(0.2, left)
+            started = time.monotonic()
+            if self._stop is not None and self._stop.wait(step):
+                raise Stopped("Stopped by the user")
+            if self._stop is None:
+                time.sleep(step)
+            left -= time.monotonic() - started
         self._touch()  # an intentional idle (waiting for energy) is not a freeze
 
     def _px(self, x: int, y: int) -> tuple[int, int]:

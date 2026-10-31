@@ -1,5 +1,8 @@
 # Changelog (phone app)
 
+## Unreleased
+- Same campfire, skill-shop and star-list changes as the desktop bot: upgrade at the campfire unless HP is under 40%, shops buy only the build, and the star list keeps scrolling to the target level. Pause/Resume is on the desktop window.
+
 ## 0.4.0 (2026-10-21)
 - Same change as the desktop bot 1.7.0: at the Fortune Teller the bot tries the 40% ball once, then the 70% ball up to 3 times, while the orbs allow.
 

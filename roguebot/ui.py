@@ -35,13 +35,17 @@ class _QueueHandler(logging.Handler):
 
 class App:
     def __init__(self, run: Callable[[RunRequest], Report], lang: str | None = None,
-                 stop: Callable[[], None] | None = None, settings_path: Path = settings.SETTINGS_PATH):
+                 stop: Callable[[], None] | None = None, settings_path: Path = settings.SETTINGS_PATH,
+                 pause: Callable[[bool], None] | None = None):
         """run(request) does the whole job and returns a Report; it raises on failure.
         stop() asks a running job to end (it then raises from run).
+        pause(True/False) holds the run at the next screenshot or tap, then continues the same run.
         Every option is saved to settings_path (on Start, language change and close) and restored here."""
         self.run = run
         self.stop = stop
+        self.pause = pause
         self._stopping = False
+        self._paused = False
         self.settings_path = settings_path
         saved = settings.load(settings_path)
         lang = lang or (saved.get("lang") if saved.get("lang") in UI_LANGUAGES else "es")
@@ -129,11 +133,13 @@ class App:
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=8, column=0, columnspan=4, sticky="ew", pady=8)
-        buttons.columnconfigure((0, 1), weight=1)
+        buttons.columnconfigure((0, 1, 2), weight=1)
         self.start = self._text(ttk.Button(buttons, command=self._start), "start")
         self.start.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.pause_button = self._text(ttk.Button(buttons, command=self._pause, state="disabled"), "pause")
+        self.pause_button.grid(row=0, column=1, sticky="ew", padx=4)
         self.stop_button = self._text(ttk.Button(buttons, command=self._stop, state="disabled"), "stop")
-        self.stop_button.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.stop_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
         self.status = ttk.Label(frame, font=("Segoe UI", 11, "bold"))
         self.status.grid(row=10, column=0, columnspan=4, sticky="w", pady=(0, 6))
@@ -304,6 +310,11 @@ class App:
             return
         self.start.configure(state="disabled")
         self._stopping = False
+        self._paused = False
+        self._set_pause_label()
+        if self.pause:
+            self.pause(False)
+        self.pause_button.configure(state="normal")
         if self.stop:
             self.stop_button.configure(state="normal")
         self._set_status("running", "black")
@@ -325,8 +336,29 @@ class App:
     def _finish(self, status: tuple[str, dict, str]) -> None:
         key, kwargs, color = status
         self._set_status(key, color, **kwargs)
+        self._paused = False
+        self._set_pause_label()
+        self.pause_button.configure(state="disabled")
         self.start.configure(state="normal")
         self.stop_button.configure(state="disabled")
+
+    def _set_pause_label(self) -> None:
+        key = "resume" if self._paused else "pause"
+        self.pause_button.configure(text=tr(self.lang, key))
+        self._texts = [(w, key if w is self.pause_button else k) for w, k in self._texts]
+
+    def _pause(self) -> None:
+        """Hold the run at the next screenshot or tap. Resume continues it; Stop still ends it."""
+        self._paused = not self._paused
+        if self.pause:
+            self.pause(self._paused)
+        self._set_pause_label()
+        if self._paused:
+            log.info("Paused: no taps until Resume (Stop still ends the run)")
+            self._set_status("paused", "darkorange")
+        else:
+            log.info("Resumed")
+            self._set_status("running", "black")
 
     def _stop(self) -> None:
         self._stopping = True

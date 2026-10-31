@@ -120,7 +120,16 @@ class Player(
         }
     }
 
-    private fun skill(card: Screens.SkillCard): Skill = catalog.lookup(card.name, card.description, card.rarity, L.active)
+    private fun skill(card: Screens.SkillCard): Skill {
+        val known = catalog.lookup(card.name, card.description, card.rarity, L.active)
+        if (!known.auto) return known
+        val fresh = Skills.inferTags(card.name, card.description)
+        if (fresh.damageType != null && fresh.damageType != known.damageType) {
+            Log.info("Skill ${card.name} read as ${fresh.damageType} from its card (saved tag ${known.damageType ?: "-"})")
+            return known.copy(damageType = fresh.damageType, nature = fresh.nature, role = fresh.role)
+        }
+        return known
+    }
 
     /** Tap point of the card the build wants, or of the reroll button. null if no card was read. */
     internal fun pickSkill(texts: List<Text>): P? {
@@ -174,11 +183,13 @@ class Player(
             val money = shop.money ?: return
             val cards = shop.cards.filter { !it.sold && it.cost != null && it.name !in tapped }
             val skills = cards.map(::skill)
-            val order = Choice.shopOrder(skills, build, state, canReroll = shop.freeReroll != null && !rerolledShop)
+            val order = Choice.shopOrder(skills, build, state, canReroll = shop.freeReroll != null && !rerolledShop, fill = false)
             if (order == null) {
-                Log.info("Shop: no wanted skill in ${skills.map { it.name }}, free reroll")
+                Log.info("Shop: no preferred skill in ${skills.map { it.name }}, free reroll")
                 device.tap(shop.freeReroll!!.center)
                 rerolledShop = true
+            } else if (order.isEmpty()) {
+                return  // nothing of the build, and the reroll is not free
             } else {
                 val i = order.firstOrNull { cards[it].cost!! <= money } ?: return
                 Log.info("Shop: buying ${skills[i].name} for ${cards[i].cost} (coins $money)")

@@ -24,7 +24,8 @@ class EliteUnavailable(msg: String) : LevelUnavailable(msg)
 /** Errors shown to the user by key (translated in the app), like emulator.EmulatorError. */
 class BotError(val key: String, val args: Map<String, Any> = emptyMap()) : RuntimeException(key)
 
-const val MAX_SCROLLS = 15
+const val MAX_SCROLLS = 80          // ~2 cards per drag; 15 stopped ~30 levels short of a low star-challenge target
+const val SCROLL_STUCK_TRIES = 3    // same visible cards this many drags in a row: the list cannot move further
 const val MAX_LOBBY_ATTEMPTS = 16
 const val MAX_ENERGY_CLAIMS = 15
 const val FEATURE_READS = 3
@@ -78,6 +79,7 @@ open class Navigator(
     fun startPendingStars(mode: Mode): Int? {
         openStarList(mode)
         var prev: List<Int>? = null
+        var stuck = 0
         repeat(MAX_SCROLLS) {
             val (img, texts) = capture()
             val cards = Screens.parseStarList(img, texts, ocr)
@@ -90,11 +92,20 @@ open class Navigator(
                 return card.number
             }
             val numbers = cards.map { it.number }
-            if (numbers.isEmpty() || numbers == prev || numbers[0] == 1) {
+            if (numbers.isEmpty() || numbers[0] == 1) {
                 Log.info("Every beaten ${mode.value} level has 3 stars")
                 return null
             }
-            prev = numbers
+            if (numbers == prev) {
+                stuck += 1
+                if (stuck >= SCROLL_STUCK_TRIES) {  // one drag that does not move the list is not the end of it
+                    Log.info("Every beaten ${mode.value} level has 3 stars")
+                    return null
+                }
+            } else {
+                stuck = 0
+                prev = numbers
+            }
             dragList(-Config.MAX_DRAG)
         }
         Log.info("Every beaten ${mode.value} level has 3 stars")
@@ -334,6 +345,7 @@ open class Navigator(
     fun scrollTo(level: Int): Card {
         var prevNumbers: List<Int>? = null
         var prevTarget: Card? = null
+        var stuck = 0
         var img: Frame? = null
         repeat(MAX_SCROLLS) {
             val c = capture()
@@ -351,7 +363,16 @@ open class Navigator(
             if (target != null && target.header.center.y < Config.LIST_BOTTOM - Config.HEADER_ABOVE_BUTTON) {
                 fail("Level $level is locked", c.first, ::LevelUnavailable)
             }
-            if (numbers == prevNumbers) fail("Level $level not found (list ends at ${numbers.last()})", c.first, ::LevelUnavailable)
+            if (numbers == prevNumbers) {
+                stuck += 1
+                if (stuck >= SCROLL_STUCK_TRIES) {
+                    fail("Level $level not found (list ends at ${numbers.last()})", c.first, ::LevelUnavailable)
+                }
+                Log.info("Star list still shows $numbers; scrolling again toward level $level")
+            } else {
+                stuck = 0
+                Log.info("Star list shows $numbers; scrolling toward level $level")
+            }
             prevNumbers = numbers
             dragList(scrollDelta(cards, level))
         }

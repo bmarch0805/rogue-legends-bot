@@ -19,7 +19,8 @@ from roguebot.vision import Ocr, Text, find, parse_level_number
 log = logging.getLogger(__name__)
 
 DEBUG_DIR = Path("debug")
-MAX_SCROLLS = 15
+MAX_SCROLLS = 80          # ~2 cards per drag; 15 stopped ~30 levels short of a low star-challenge target
+SCROLL_STUCK_TRIES = 3    # same visible cards this many drags in a row: the list cannot move further
 MAX_LOBBY_ATTEMPTS = 16  # popups chain after returning from a level (a new chapter: 6+ in a row)
 MAX_ENERGY_CLAIMS = 15  # popup reads while claiming: Daily Pack + up to 3 videos, with screens in between
 FEATURE_READS = 3  # lobby reads before deciding a button is missing (not unlocked), not just missed by OCR
@@ -106,7 +107,7 @@ class Navigator:
         The list opens near its end: scan upwards, page by page. Returns the level, or None if every
         beaten level has 3 stars (nothing started)."""
         self._open_star_list(mode)
-        prev = None
+        prev, stuck = None, 0
         for _ in range(MAX_SCROLLS):
             img, texts = self._capture()
             cards = parse_star_list(img, texts, self.ocr)
@@ -119,9 +120,15 @@ class Navigator:
                 self._press_start(card.button, mode)
                 return card.number
             numbers = [c.number for c in cards]
-            if not numbers or numbers == prev or numbers[0] == 1:
+            if not numbers or numbers[0] == 1:
                 break
-            prev = numbers
+            if numbers == prev:
+                stuck += 1
+                if stuck >= SCROLL_STUCK_TRIES:  # one drag that does not move the list is not the end of it
+                    break
+            else:
+                stuck = 0
+                prev = numbers
             self._drag_list(-config.MAX_DRAG)  # towards lower levels
         log.info("Every beaten %s level has 3 stars", mode.value)
         return None
@@ -369,7 +376,8 @@ class Navigator:
         return lobby
 
     def _scroll_to(self, level: int) -> Card:
-        prev_numbers, prev_target = None, None
+        prev_numbers, prev_target, stuck = None, None, 0
+        img = None
         for _ in range(MAX_SCROLLS):
             img, texts = self._capture()
             cards = parse_star_list(img, texts, self.ocr)
@@ -390,7 +398,13 @@ class Navigator:
                 # Header well inside the view but no start button below it.
                 self._fail(f"Level {level} is locked", img, LevelUnavailable)
             if numbers == prev_numbers:
-                self._fail(f"Level {level} not found (list ends at {numbers[-1]})", img, LevelUnavailable)
+                stuck += 1
+                if stuck >= SCROLL_STUCK_TRIES:
+                    self._fail(f"Level {level} not found (list ends at {numbers[-1]})", img, LevelUnavailable)
+                log.info("Star list still shows %s; scrolling again toward level %s", numbers, level)
+            else:
+                stuck = 0
+                log.info("Star list shows %s; scrolling toward level %s", numbers, level)
             prev_numbers = numbers
             self._drag_list(self._scroll_delta(cards, level))
         self._fail(f"Level {level} not reached after {MAX_SCROLLS} scrolls", img)

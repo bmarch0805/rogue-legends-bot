@@ -27,6 +27,10 @@ def app(_window):
     _window.source.set("latest")
     _window._toggle_level()
     _window.level.set("1")
+    _window._paused = False
+    _window.pause = None
+    _window._set_pause_label()
+    _window.pause_button.configure(state="disabled")
     return _window
 
 
@@ -94,6 +98,35 @@ def test_full_routine_checkbox_builds_a_full_request(app, monkeypatch):
     finally:
         app.full.set(False)
     assert requests[0].full and requests[0].repeat and not requests[0].loop
+
+
+def test_pause_holds_the_run_and_resume_continues_it(app, monkeypatch):
+    monkeypatch.setattr("roguebot.ui.threading.Thread", InlineThread)
+    paused = []
+
+    def run(request):
+        assert str(app.pause_button.cget("state")) == "normal"
+        assert paused == [False]  # Start clears a pause left from another run
+        app.pause_button.invoke()
+        assert app._paused and paused == [False, True]
+        assert app.status.cget("text") == TEXTS["en"]["paused"]
+        assert app.pause_button.cget("text") == "Resume"
+        app.set_language("es")
+        assert app.pause_button.cget("text") == "Reanudar"
+        app.set_language("en")
+        app.pause_button.invoke()
+        assert paused == [False, True, False]
+        assert app.pause_button.cget("text") == "Pause"
+        assert app.status.cget("text") == TEXTS["en"]["running"]
+        return Report([LevelScreen.VICTORY])
+
+    app.pause = lambda flag: paused.append(flag)
+    monkeypatch.setattr(app, "run", run)
+    app._start()
+    app.root.update()
+    assert not app._paused
+    assert str(app.pause_button.cget("state")) == "disabled"
+    assert app.pause_button.cget("text") == "Pause"
 
 
 def test_stop_button(app, monkeypatch):

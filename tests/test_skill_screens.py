@@ -146,9 +146,9 @@ def test_shop_buys_wanted_first_then_what_coins_allow(tmp_path):
               shop_screen(107, [(*RECOVERY, True), (*FIRE_WAVE, True), (*EXECUTIONER, False)], free=False)]
     p = player(tmp_path, Build("magic"), frames)
     p._shop(shop_screen(250, [(*RECOVERY, False), (*FIRE_WAVE, False), (*EXECUTIONER, False)]))
-    # Fire Wave (wanted) first; then 155 coins: Executioner (190) is too expensive, Recovery (48) fits.
-    assert p.device.taps == [price_at(1), price_at(0)]
-    assert p._state.taken == ["Fire Wave", "Recovery"]
+    # Fire Wave is the magic skill. Recovery (support) and Executioner (untyped physical) are not bought.
+    assert p.device.taps == [price_at(1)]
+    assert p._state.taken == ["Fire Wave"]
 
 
 def test_shop_uses_the_free_reroll_when_nothing_fits(tmp_path):
@@ -156,6 +156,37 @@ def test_shop_uses_the_free_reroll_when_nothing_fits(tmp_path):
     p = player(tmp_path, Build("magic"), frames)
     p._shop(shop_screen(100, [(*RECOVERY, False)]))
     assert p.device.taps == [(855, 2385), price_at(0)]  # free reroll, then the fire skill
+
+
+def test_card_text_shuriken_beats_a_stale_tag_and_the_top_card(tmp_path):
+    """A saved untyped tag must not hide "Shuriken" written on the card, or the top card wins."""
+    import json
+    path = tmp_path / "skills.json"
+    path.write_text(json.dumps({"startoss": {
+        "name": "Star Toss", "lang": "en", "rarity": "common", "damage_type": None, "nature": "physical",
+        "role": "damage", "description": "ATK up", "auto": True}}), encoding="utf-8")
+    build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+    p = Player(TapLog(), Frames(()), build, Catalog(path))
+    labels.set_language("en")
+    screen = [PROMPT, *card("Common", "Heavy Blow", "ATK up.", 928),
+              *card("Common", "Star Toss", "Throw a Shuriken.", 1236),
+              *card("Legendary", "Sneaky Poison", "Apply Poison.", 1560)]
+    assert p._pick_skill(screen) == (720, 1236 + config.SKILL_TAP_BELOW_RARITY)
+
+
+def test_user_locked_tag_is_not_overridden_by_the_card_text(tmp_path):
+    import json
+    path = tmp_path / "skills.json"
+    path.write_text(json.dumps({"startoss": {
+        "name": "Star Toss", "lang": "en", "rarity": "common", "damage_type": "venom", "nature": "physical",
+        "role": "damage", "description": "", "auto": False}}), encoding="utf-8")
+    build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
+    p = Player(TapLog(), Frames(()), build, Catalog(path))
+    labels.set_language("en")
+    # Locked as venom, so the shuriken words on the card do not promote it over a real shuriken.
+    screen = [PROMPT, *card("Common", "Star Toss", "Throw a Shuriken.", 928),
+              *card("Common", "Real Toss", "Every attack throws a Shuriken.", 1236)]
+    assert p._pick_skill(screen) == (720, 1236 + config.SKILL_TAP_BELOW_RARITY)
 
 
 def test_shop_without_coins_buys_nothing(tmp_path):

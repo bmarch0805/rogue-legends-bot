@@ -35,6 +35,7 @@ object Config {
     // Top bar
     const val TOP_BAR_MAX_Y = 150
     val ENERGY_X = 700..1000
+    val HP_X = 300..720            // heart line "107,2k/152,5k" (current/max). Not the heal option's "39% de HP".
 
     // Energy popup
     val ENERGY_ICON = P(745, 85)
@@ -83,7 +84,9 @@ object Config {
     const val EVENT_TITLE_CENTER_TOLERANCE = 60
     val EVENT_LABEL_Y = 1750..1840
     const val EVENT_ICON_BELOW_LABEL = 238
+    const val EVENT_COLUMN_X = 160
     const val EVENT_DISABLED_MAX_SATURATION = 70
+    const val CAMPFIRE_HEAL_BELOW = 0.40
     val FLIP_CARDS = listOf(1280, 1560, 1840).flatMap { y -> listOf(299, 579, 859, 1139).map { x -> P(x, y) } }
     const val FLIP_FACE_DOWN_MIN_FRACTION = 0.25
     val FORTUNE_TELLER_BACK = P(293, 2280)

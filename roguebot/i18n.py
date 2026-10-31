@@ -13,6 +13,7 @@ TEXTS = {
             "  • El juego en español o inglés, con el tutorial inicial terminado.\n"
             "Al pulsar Iniciar, el bot abre el emulador y el juego si hace falta.\n"
             "  • No uses el emulador mientras el bot juega.\n"
+            "  • Pausa deja de tocar para que puedas arreglar el juego a mano; Reanudar sigue la misma partida.\n"
             "  • Nunca gasta diamantes ni compra ofertas.\n"
             "  • Si tu cuenta no tiene una función (gremio, élite, modos…), la salta y sigue.\n"
             "  • Si se atasca, reinicia el emulador y sigue. Las capturas de los fallos van a la carpeta debug.\n"
@@ -40,6 +41,9 @@ TEXTS = {
         "stars": "Desafío de Estrellas",
         "start": "Iniciar",
         "stop": "Detener",
+        "pause": "Pausa",
+        "resume": "Reanudar",
+        "paused": "En pausa. Arregla el juego si hace falta y pulsa Reanudar. Detener termina la partida.",
         "build_title": "Build (habilidades en niveles y tienda)",
         "build_nature": "Daño preferido",
         "physical": "Físico",
@@ -95,6 +99,7 @@ TEXTS = {
             "  • The game in Spanish or English, with the first tutorial finished.\n"
             "On Start, the bot opens the emulator and the game if needed.\n"
             "  • Don't use the emulator while the bot plays.\n"
+            "  • Pause holds taps so you can fix the game by hand; Resume continues the same run.\n"
             "  • It never spends gems or buys offers.\n"
             "  • If your account lacks a feature (guild, elite, modes…), it skips it and moves on.\n"
             "  • If it gets stuck, it restarts the emulator and goes on. Screenshots of failures go to the debug folder.\n"
@@ -122,6 +127,9 @@ TEXTS = {
         "stars": "Star Challenge",
         "start": "Start",
         "stop": "Stop",
+        "pause": "Pause",
+        "resume": "Resume",
+        "paused": "Paused. Fix the game if you need to, then press Resume. Stop ends the run.",
         "build_title": "Build (skills in levels and shops)",
         "build_nature": "Preferred damage",
         "physical": "Physical",
