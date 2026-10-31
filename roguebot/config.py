@@ -126,6 +126,13 @@ LOBBY_LEFT_ICONS_MAX_X = 250            # lobby left column of icons (Paquete In
 DONATE_FREE_MAX = 5                      # free donations per visit (seen: 1 per day, then a gem price)
 PATROL_CLAIM_AFTER = 2 * 3600            # claim the patrol reward once it holds at least 2 h (the counter stops at 8 h)
 PATROL_BUTTONS_Y = (1700, 1850)          # patrol popup: Quick Patrol / Claim row
+# Star Challenge sits in the row just above Start (measured 164–196 px above INICIO/START/LISTO/READY,
+# ~250 px to its right). Side-column events (Boss Rush, Egg Rush, Wish Challenge) are ~700 px away.
+STAR_CHALLENGE_ABOVE = (120, 280)        # how far the label center sits above the Start button center
+STAR_CHALLENGE_DX = 450                  # and how close, horizontally
+STAR_WORD_ABOVE = 90                     # English OCR: "Star"/"i-Star" is ~40 px above the "Challenge" line
+STAR_WORD_DX = 120
+CLOSE_X_LIT_MIN = 80                     # mean brightness of a tappable ✕ (~186); the one dimmed under Quick Patrol is ~18
 REMAINING_BELOW_BUTTON = (80, 170)        # quick patrol: "Remaining: N" below its button label
 QUICK_PATROL_CYAN_MIN = 0.08              # share of cyan (lightning) pixels left of the energy option's "x10"; gem/video: 0
 GUILD_BUTTON = (89, 2130)                # lobby, bottom-left book; only tapped when its label is there

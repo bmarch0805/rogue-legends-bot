@@ -57,6 +57,50 @@ class NavigationTest {
     }
 
     @Test
+    fun starChallengeButtonIsTheRowAboveStartNotBossRush() {
+        L.setLanguage("en")
+        val start = t("START", 524, 2046, 794, 2138)
+        val challenge = t("Challenge", 813, 1900, 990, 1950)
+        val star = t("i-Star", 821, 1856, 945, 1906)
+        val boss = t("Boss Rush", 1100, 980, 1380, 1060)
+        val banner = t("Challenge", 560, 1180, 860, 1240)
+        val wish = t("Wish Challenge", 1180, 1400, 1420, 1460)
+        val texts = listOf(t("Patrol", 659, 1903, 775, 1943), start, star, challenge, boss, banner, wish)
+        assertEquals(challenge, Screens.starChallengeButton(texts, start))
+        assertNull(Screens.starChallengeButton(listOf(start, challenge), start))  // "Start" contains "star" but sits below
+        assertNull(Screens.starChallengeButton(listOf(start, banner, boss, wish), start))
+        assertNull(Screens.starChallengeButton(listOf(start, t("Boss Rush", 813, 1900, 990, 1950)), start))
+        val oneBox = t("Star Challenge", 813, 1900, 990, 1950)
+        assertEquals(oneBox, Screens.starChallengeButton(listOf(start, oneBox, banner), start))
+        L.setLanguage("es")
+        val inicio = t("INICIO", 531, 2047, 785, 2135)
+        val estrellas = t("de Estrellas", 813, 1912, 988, 1943)
+        assertEquals(estrellas, Screens.starChallengeButton(listOf(inicio, estrellas, t("Boss Rush", 1100, 980, 1380, 1060)), inicio))
+    }
+
+    @Test
+    fun goToLobbyClosesQuickPatrolBeforeThePatrolMenu() {
+        L.setLanguage("en")
+        val x = template("close_x.png")
+        val sheet = Canvas().paste(x, 720, 1810).paste(x, 720, 2021).frame
+        val quick = listOf(
+            t("Quick Patrol", 538, 716, 903, 793),
+            t("Immediately claim 2h's worth of rewards:", 275, 916, 1166, 970),
+        )
+        val patrolOnly = Canvas().paste(x, 720, 2021).frame
+        val patrol = listOf(
+            t("Patrol", 623, 414, 815, 482),
+            t("Quick Patrol", 315, 1740, 677, 1814),
+            t("Claim", 855, 1739, 1033, 1811),
+        )
+        val device = FakeDevice()
+        nav(device, Script(listOf(sheet to quick, patrolOnly to patrol, Script.BLANK to EN_LOBBY))).goToLobby()
+        assertEquals(2, device.taps.size)
+        near(P(720, 1810), device.taps[0])
+        near(P(720, 2021), device.taps[1])
+    }
+
+    @Test
     fun goToLobbyPrefersTheBackArrowOverTheFooter() {
         val towerFrame = Canvas().footer().paste(template("back_arrow.png"), 120, 2447).frame
         val tower = listOf(t("Tower of Heroes 16", 560, 245, 880, 290), t("Challenge", 620, 2395, 820, 2440))

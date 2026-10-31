@@ -119,6 +119,12 @@ object Config {
     const val DONATE_FREE_MAX = 5
     const val PATROL_CLAIM_AFTER = 2 * 3600
     val PATROL_BUTTONS_Y = 1700..1850
+    // Star Challenge sits in the row just above Start (164–196 px above it, ~250 px to the right).
+    val STAR_CHALLENGE_ABOVE = 120..280
+    const val STAR_CHALLENGE_DX = 450
+    const val STAR_WORD_ABOVE = 90
+    const val STAR_WORD_DX = 120
+    const val CLOSE_X_LIT_MIN = 80.0  // tappable ✕ ~186; the one dimmed under Quick Patrol ~18
     val REMAINING_BELOW_BUTTON = 80 to 170
     const val QUICK_PATROL_CYAN_MIN = 0.08
     val GUILD_BUTTON = P(89, 2130)

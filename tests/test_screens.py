@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from roguebot.screens import (LevelScreen, Mode, classify_level_screen, close_button, footer_visible, game_speed, is_loading, is_star_list, parse_elite_dialog,
-                              parse_energy, parse_energy_popup, parse_lobby, parse_star_list, popup_close)
+                              parse_energy, parse_energy_popup, parse_lobby, parse_star_list, popup_close, star_challenge_button)
 from roguebot import labels
 from roguebot.vision import Text, normalize, parse_level_number
 from conftest import fixture_image
@@ -212,6 +212,43 @@ def test_lobby_english(ocr, name, mode, level):
     assert lobby.mode == mode
     assert parse_level_number(lobby.level_title) == level
     assert not is_star_list(texts)
+    # "Star Challenge" OCRs as "Star"/"i-Star" plus "Challenge", in the row above Start.
+    assert lobby.stars_button is not None and lobby.stars_button.norm == "challenge"
+    assert 150 < lobby.start_button.center[1] - lobby.stars_button.center[1] < 220
+
+
+def test_star_challenge_ignores_boss_rush_and_other_event_tiles(ocr):
+    """A featured Boss Rush / Wish Challenge tile also says "Challenge" or "Rush", higher on the
+    lobby than Star Challenge. The control to open is the one just above Start."""
+    _, texts = load(ocr, "en_lobby_normal.png")
+    events = [
+        Text("Boss Rush", 1100, 980, 1380, 1060),
+        Text("Challenge", 560, 1180, 860, 1240),          # the event banner's button
+        Text("Wish Challenge", 1180, 1400, 1420, 1460),
+        Text("Chest Rush", 1280, 1560, 1420, 1620),
+        Text("Egg Rush", 1280, 1580, 1420, 1640),
+    ]
+    lobby = parse_lobby(texts + events)
+    assert lobby.stars_button.norm == "challenge"
+    assert lobby.stars_button.center[1] > 1900            # the row above Start, not the banner
+    # The banner button alone, with no "Star" line, is not Star Challenge.
+    start = next(t for t in texts if t.norm == "start")
+    assert star_challenge_button(events + [start, Text("Patrol", 659, 1903, 775, 1943)], start) is None
+
+
+@pytest.mark.parametrize("name", ["lobby_normal.png", "lobby_elite.png"])
+def test_spanish_star_challenge_is_de_estrellas_above_start(ocr, name):
+    _, texts = load(ocr, name)
+    lobby = parse_lobby(texts)
+    assert lobby.stars_button.norm == "de estrellas"
+    assert lobby.stars_button.center[1] < lobby.start_button.center[1]
+
+
+@pytest.mark.parametrize("name", ["elite_dialog_x5.png", "en_elite_dialog_x5.png"])
+def test_elite_dialog_does_not_take_the_dimmed_star_label_behind_it(ocr, name):
+    """The dialog's own Start is not the lobby Start, so the label showing through is not the button."""
+    _, texts = load(ocr, name)
+    assert parse_lobby(texts).stars_button is None
 
 
 @pytest.mark.parametrize("name, playable, locked", [

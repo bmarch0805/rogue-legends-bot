@@ -321,6 +321,21 @@ def test_patrol_popup(ocr, name):
 
 
 @pytest.mark.parametrize("name", ["patrol_fast_used_up.png", "en_patrol_fast_used_up.png"])
+def test_quick_patrol_close_is_the_lit_sheet_not_the_patrol_menu(ocr, name):
+    """Two ✕ show: the bright one closes Quick Patrol; the dimmed one belongs to the Patrol menu
+    under it and does not dismiss the sheet (the bot used to tap that one forever)."""
+    from roguebot.mode_screens import quick_patrol_close, quick_patrol_open
+    img, texts = load(ocr, name)
+    assert quick_patrol_open(texts)
+    assert quick_patrol_close(img, texts) == (720, 1810)  # the sheet, not the menu ✕ at (720, 2021)
+    menu_name = "en_patrol.png" if name.startswith("en_") else "patrol.png"
+    menu_img, menu_texts = load(ocr, menu_name)
+    assert not quick_patrol_open(menu_texts)
+    assert quick_patrol_close(menu_img, menu_texts) is None
+    assert close_button(menu_img) == (720, 2021)
+
+
+@pytest.mark.parametrize("name", ["patrol_fast_used_up.png", "en_patrol_fast_used_up.png"])
 def test_quick_patrol_used_up(ocr, name):
     from roguebot.mode_screens import parse_patrol, parse_quick_patrol
     img, texts = load(ocr, name)

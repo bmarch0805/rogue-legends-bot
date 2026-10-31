@@ -5218,13 +5218,7 @@
 799,
 1570
 ],
-"stars_button": [
-"de Estrellas",
-830,
-1910,
-1005,
-1941
-],
+"stars_button": null,
 "energy": 12,
 "has_elite": false
 },
@@ -5691,13 +5685,7 @@
 799,
 1570
 ],
-"stars_button": [
-"de Estrellas",
-830,
-1910,
-1005,
-1941
-],
+"stars_button": null,
 "energy": 12,
 "has_elite": false
 },
@@ -8668,13 +8656,7 @@
 803,
 1570
 ],
-"stars_button": [
-"Challenge",
-833,
-1905,
-1006,
-1947
-],
+"stars_button": null,
 "energy": 24,
 "has_elite": false
 },

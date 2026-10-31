@@ -82,6 +82,24 @@ object ModeScreens {
         } > Config.QUICK_PATROL_CYAN_MIN
     }
 
+    /** The Quick Patrol sheet's own title. The Patrol menu's button of the same name sits in PATROL_BUTTONS_Y. */
+    fun quickPatrolTitle(texts: List<Text>): Text? {
+        val hits = ArrayList<Text>()
+        find(texts, L.QUICK_PATROL_TEXT)?.let { hits.add(it) }
+        hits.addAll(texts.filter { matches(it, L.QUICK_PATROL) && it.center.y < Config.PATROL_BUTTONS_Y.first })
+        return hits.maxByOrNull { it.center.y }
+    }
+
+    fun quickPatrolOpen(texts: List<Text>): Boolean = quickPatrolTitle(texts) != null
+
+    /** The lit ✕ of the Quick Patrol sheet. Never the dimmed Patrol-menu ✕ underneath it. */
+    fun quickPatrolClose(img: Frame?, texts: List<Text>): P? {
+        if (img == null) return null
+        val title = quickPatrolTitle(texts) ?: return null
+        val lit = Screens.closeButtons(img).filter { it.y > title.center.y && Screens.closeXLit(img, it) }
+        return lit.minByOrNull { it.y }
+    }
+
     fun parseQuickPatrol(img: Frame, texts: List<Text>): QuickPatrol? {
         if (find(texts, L.QUICK_PATROL_TEXT) == null) return null
         val video = texts.firstOrNull { matches(it, L.FREE, exact = true) && usesLeft(it, texts) > 0 }

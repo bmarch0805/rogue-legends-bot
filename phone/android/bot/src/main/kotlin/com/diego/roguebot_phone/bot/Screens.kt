@@ -36,7 +36,32 @@ object Screens {
         }
         val start = find(texts, startLabel(mode), exact = true) ?: return null
         val title = texts.firstOrNull { parseLevelNumber(it.text) != null }?.text
-        return Lobby(mode, title, start, find(texts, L.STARS_BUTTON), parseEnergy(texts), hasElite)
+        return Lobby(mode, title, start, starChallengeButton(texts, start), parseEnergy(texts), hasElite)
+    }
+
+    /** Event tiles that share a word with Star Challenge. Never the lobby control above Start. */
+    private val EVENT_TILES = listOf("boss rush", "boss challenge", "wish challenge", "chest rush", "egg rush")
+
+    private fun eventTile(t: Text) = EVENT_TILES.any { it in t.norm }
+
+    /** The lobby's Star Challenge / Desafío de Estrellas control, in the row just above Start.
+     *  Not Boss Rush and not another event. English OCR splits the label into "Star" and "Challenge". */
+    fun starChallengeButton(texts: List<Text>, start: Text): Text? {
+        val (sx, sy) = start.center.x to start.center.y
+        fun inRow(t: Text): Boolean {
+            val dy = sy - t.center.y
+            return dy in Config.STAR_CHALLENGE_ABOVE && kotlin.math.abs(t.center.x - sx) <= Config.STAR_CHALLENGE_DX && !eventTile(t)
+        }
+        val phrase = texts.filter { matches(it, L.STARS_BUTTON) && inRow(it) }
+        if (phrase.isNotEmpty()) return phrase.minBy { kotlin.math.abs(it.center.x - sx) }
+        return texts.firstOrNull { it.norm == "challenge" && inRow(it) && texts.any { o -> starLine(o, it) } }
+    }
+
+    /** The "Star" half of a split "Star Challenge" label: just above the "Challenge" line. */
+    private fun starLine(label: Text, challenge: Text): Boolean {
+        if ("star" !in label.norm || "starter" in label.norm || eventTile(label)) return false
+        return kotlin.math.abs(label.center.x - challenge.center.x) <= Config.STAR_WORD_DX &&
+            challenge.center.y - label.center.y in 0..Config.STAR_WORD_ABOVE
     }
 
     fun isStarList(texts: List<Text>): Boolean =
@@ -105,6 +130,31 @@ object Screens {
     fun isLoading(texts: List<Text>): Boolean = find(texts, L.LOADING) != null
 
     fun closeButton(img: Frame): P? = matchTemplate(img, Templates.closeX, Config.CLOSE_X_MIN_SCORE)
+
+    /** Every popup ✕ at the usual size, top to bottom. Quick Patrol leaves the Patrol menu's ✕
+     *  visible under the sheet, so the single best match can be the one that does not close it. */
+    fun closeButtons(img: Frame): List<P> {
+        val work = Frame(img.width, img.height, img.pixels.copyOf())
+        val found = ArrayList<P>()
+        val halfW = Templates.closeX.width / 2
+        val halfH = Templates.closeX.height / 2
+        repeat(4) {
+            val hit = matchTemplate(work, Templates.closeX, Config.CLOSE_X_MIN_SCORE) ?: return found.sortedBy { it.y }
+            found.add(hit)
+            val x0 = (hit.x - halfW).coerceAtLeast(0)
+            val y0 = (hit.y - halfH).coerceAtLeast(0)
+            val x1 = (hit.x + halfW).coerceAtMost(work.width)
+            val y1 = (hit.y + halfH).coerceAtMost(work.height)
+            for (y in y0 until y1) for (x in x0 until x1) work.pixels[y * work.width + x] = 0xFF000000.toInt()
+        }
+        return found.sortedBy { it.y }
+    }
+
+    /** The sheet in front draws a bright ✕. The Patrol menu's ✕ under Quick Patrol is dimmed. */
+    fun closeXLit(img: Frame, c: P): Boolean {
+        val m = img.mean(c.x - 40, c.y - 40, c.x + 40, c.y + 40)
+        return (m[0] + m[1] + m[2]) / 3.0 >= Config.CLOSE_X_LIT_MIN
+    }
 
     private val closeXScaled by lazy { Config.CLOSE_X_SCALES.map { Template(Templates.closeX.src.scaled(it)) } }
 

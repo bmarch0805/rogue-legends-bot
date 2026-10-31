@@ -321,6 +321,85 @@ def test_energy_claim_closes_a_late_promo_and_reopens_the_energy_popup(monkeypat
     assert nav.device.taps == [energy_icon, close_text, energy_icon, config.ENERGY_POPUP_CLOSE]
 
 
+def test_star_challenge_button_requires_the_row_above_start():
+    """Bare "Challenge" is Wish Challenge / a Boss Rush banner. Star Challenge is the split
+    "Star" + "Challenge" label just above Start, or the full "Desafío de Estrellas" phrase."""
+    from roguebot.screens import star_challenge_button
+    labels.set_language("en")
+    start = Text("START", 524, 2046, 794, 2138)          # center (659, 2092)
+    challenge = Text("Challenge", 813, 1900, 990, 1950)  # center (901, 1925), just above Start
+    star = Text("i-Star", 821, 1856, 945, 1906)          # the line above "Challenge"
+    boss = Text("Boss Rush", 1100, 980, 1380, 1060)
+    banner = Text("Challenge", 560, 1180, 860, 1240)     # featured event, not this row
+    wish = Text("Wish Challenge", 1180, 1400, 1420, 1460)
+    try:
+        texts = [Text("Patrol", 659, 1903, 775, 1943), start, star, challenge, boss, banner, wish]
+        assert star_challenge_button(texts, start) is challenge
+        assert star_challenge_button([start, challenge], start) is None  # "Start" contains "star" but sits below the row
+        assert star_challenge_button([start, banner, boss, wish], start) is None  # no Star line in the row
+        assert star_challenge_button([start, Text("Boss Rush", 813, 1900, 990, 1950)], start) is None
+        one_box = Text("Star Challenge", 813, 1900, 990, 1950)
+        assert star_challenge_button([start, one_box, banner], start) is one_box
+    finally:
+        labels.set_language(None)
+    labels.set_language("es")
+    inicio = Text("INICIO", 531, 2047, 785, 2135)
+    estrellas = Text("de Estrellas", 813, 1912, 988, 1943)
+    try:
+        assert star_challenge_button([inicio, estrellas, Text("Boss Rush", 1100, 980, 1380, 1060)], inicio) is estrellas
+    finally:
+        labels.set_language(None)
+
+
+def test_go_to_lobby_closes_quick_patrol_before_the_patrol_menu(monkeypatch):
+    """The sheet's ✕ first. The Patrol menu's ✕ is still visible under it and does not close the sheet."""
+    import numpy as np
+    from roguebot import navigation
+    monkeypatch.setattr(navigation.time, "sleep", lambda s: None)
+    monkeypatch.setattr(navigation, "close_button", lambda img: (720, 2021))  # the menu ✕ (the one a score tie can pick)
+    monkeypatch.setattr(navigation, "quick_patrol_close", lambda img, texts: (720, 1810) if any(
+        "immediately" in t.norm for t in texts) else None)
+    quick = [Text("Quick Patrol", 538, 716, 903, 793),
+             Text("Immediately claim 2h's worth of rewards:", 275, 916, 1166, 970)]
+    patrol = [Text("Patrol", 623, 414, 815, 482), Text("Patrol time: 01:28", 561, 1020, 961, 1072),
+              Text("Quick Patrol", 315, 1740, 677, 1814), Text("Claim", 855, 1739, 1033, 1811)]
+    lobby = [Text("Patrol", 659, 1903, 775, 1943), Text("OFF", 880, 2060, 990, 2095),
+             Text("START", 524, 2046, 794, 2139), Text("Star", 850, 1856, 960, 1906),
+             Text("Challenge", 813, 1900, 990, 1950)]
+    frames = iter([quick, patrol, lobby])
+    nav = Navigator(_TapLog(), None)
+    nav._capture = lambda: (np.zeros((2560, 1440, 3), np.uint8), next(frames))
+    labels.set_language("en")
+    try:
+        nav.go_to_lobby()
+    finally:
+        labels.set_language(None)
+    assert nav.device.taps == [(720, 1810), (720, 2021)]
+
+
+def test_go_to_lobby_does_not_tap_the_patrol_close_while_quick_patrol_is_open(monkeypatch):
+    import numpy as np
+    from roguebot import navigation
+    monkeypatch.setattr(navigation.time, "sleep", lambda s: None)
+    monkeypatch.setattr(navigation, "close_button", lambda img: (720, 2021))
+    monkeypatch.setattr(navigation, "quick_patrol_close", lambda img, texts: None)  # sheet ✕ not lit yet
+    quick = [Text("Quick Patrol", 538, 716, 903, 793),
+             Text("Immediately claim 2h's worth of rewards:", 275, 916, 1166, 970)]
+    patrol = [Text("Patrol", 623, 414, 815, 482), Text("Quick Patrol", 315, 1740, 677, 1814),
+              Text("Claim", 855, 1739, 1033, 1811)]
+    lobby = [Text("Patrol", 659, 1903, 775, 1943), Text("OFF", 880, 2060, 990, 2095),
+             Text("START", 524, 2046, 794, 2139)]
+    frames = iter([quick, quick, patrol, lobby])
+    nav = Navigator(_TapLog(), None)
+    nav._capture = lambda: (np.zeros((2560, 1440, 3), np.uint8), next(frames))
+    labels.set_language("en")
+    try:
+        nav.go_to_lobby()
+    finally:
+        labels.set_language(None)
+    assert nav.device.taps == [(720, 2021)]  # only once Quick Patrol's title is gone
+
+
 def test_go_to_lobby_prefers_the_back_arrow_over_the_footer(monkeypatch):
     """On mode screens the footer tab spot is their Challenge button: never tap it while a back arrow shows."""
     import numpy as np
