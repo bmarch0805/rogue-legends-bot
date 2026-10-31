@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.2 (2026-10-31)
 - Campfire ("Un Momento de Descanso"): the bot upgrades a skill. It restores HP only when the top-bar heart line is under 40%. If that line cannot be read, it still upgrades (the "39% de HP" under Descansar is the heal amount, not the current HP).
 - Shops buy skills of the build only (your damage-type order, then rarity). They no longer spend leftover coins on other cards. A level-up with no named damage type uses the reroll before taking an untyped skill. A damage type written on the card (shuriken, venom, …) wins over a stale saved tag.
 - Star Challenge keeps scrolling until the target level is on screen. One drag that does not move the list is tried again; the search no longer stops after a short scroll.
