@@ -545,8 +545,8 @@ class NavigationTest {
             shop(155, listOf(recovery, fireWave.copy(sold = true), executioner), free = false),
             shop(107, listOf(recovery.copy(sold = true), fireWave.copy(sold = true), executioner), free = false)))
         p.shop(shop(250, listOf(recovery, fireWave, executioner)))
-        assertEquals(listOf(priceAt(1), priceAt(0)), device.taps)
-        assertEquals(listOf("Fire Wave", "Recovery"), p.state.taken)
+        assertEquals(listOf(priceAt(1)), device.taps)
+        assertEquals(listOf("Fire Wave"), p.state.taken)
     }
 
     @Test

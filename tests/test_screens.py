@@ -6,9 +6,12 @@ import cv2
 import numpy as np
 import pytest
 
+import logging
+
+from roguebot import config, labels
 from roguebot.screens import (LevelScreen, Mode, classify_level_screen, close_button, footer_visible, game_speed, is_loading, is_star_list, parse_elite_dialog,
-                              parse_energy, parse_energy_popup, parse_lobby, parse_star_list, popup_close, star_challenge_button)
-from roguebot import labels
+                              parse_energy, parse_energy_popup, parse_hp_ratio, parse_lobby, parse_star_list, popup_close,
+                              star_challenge_button)
 from roguebot.vision import Text, normalize, parse_level_number
 from conftest import fixture_image
 
@@ -80,7 +83,7 @@ def test_star_list(ocr, name, playable, locked):
     ("level_board_auto.png", LevelScreen.AUTO_PLAY, None),          # green dice "Toca para Detener" right after the hold
     ("level_board_auto_rolling.png", LevelScreen.AUTO_PLAY, None),  # auto-play mid-level: never tap (it would stop it)
     ("level_event_cart.png", LevelScreen.EVENT, (923, 2030)),    # "Salir" option
-    ("level_event_rest.png", LevelScreen.EVENT, (510, 2033)),    # no "Salir": leftmost option
+    ("level_event_rest.png", LevelScreen.EVENT, (924, 2032)),    # HP 107.2/152.5k >= 40%: "Entrenar", not "Descansar"
     ("en_board_dice_unknown.png", LevelScreen.BOARD_READY, (720, 2150)),  # dark teal board: not a footer
     ("en_level_event_disabled_option.png", LevelScreen.EVENT, (922, 2033)),  # "Read" greyed after failing: "Walk Away"
     ("level_shop.png", LevelScreen.SHOP, (427, 2417)),
@@ -125,6 +128,58 @@ def test_level_screens(ocr, name, kind, tap):
         assert state.tap is None
     else:
         assert abs(state.tap[0] - tap[0]) <= 15 and abs(state.tap[1] - tap[1]) <= 15
+
+
+def _replace_hp(texts, hp: str | None):
+    """Swap the top-bar heart line. None drops it. The heal option's "39% de HP" stays."""
+    out = []
+    for t in texts:
+        top = t.center[1] <= config.TOP_BAR_MAX_Y and "/" in t.norm and "k" in t.norm
+        if not top:
+            out.append(t)
+        elif hp is not None:
+            out.append(Text(hp, t.x1, t.y1, t.x2, t.y2))
+    return out
+
+
+def test_hp_ratio_reads_the_heart_line_not_the_heal_amount():
+    assert parse_hp_ratio([Text("39% de HP", 369, 2303, 653, 2363)]) is None
+    ratio = parse_hp_ratio([Text("107,2k/152,5k", 420, 58, 663, 100), Text("39% de HP", 369, 2303, 653, 2363)])
+    assert ratio == pytest.approx(107.2 / 152.5)
+    assert parse_hp_ratio([Text("12/32", 820, 70, 890, 100)]) is None  # energy, no k/m/b
+
+
+def test_campfire_restores_hp_only_under_40_percent(ocr):
+    img, texts = load(ocr, "level_event_rest.png")
+    low = classify_level_screen(img, _replace_hp(texts, "50k/152,5k"))  # 32.8%
+    assert low.kind is LevelScreen.EVENT
+    assert abs(low.tap[0] - 510) <= 15 and abs(low.tap[1] - 2033) <= 15  # Descansar
+    exact = classify_level_screen(img, _replace_hp(texts, "61k/152,5k"))  # 40.0%: not under
+    assert abs(exact.tap[0] - 924) <= 15  # Entrenar
+
+
+def test_campfire_upgrades_when_hp_is_unreadable(ocr, caplog):
+    """The "39% de HP" under Descansar is the heal amount. Missing heart line → upgrade, and say so."""
+    img, texts = load(ocr, "level_event_rest.png")
+    with caplog.at_level(logging.INFO, logger="roguebot.screens"):
+        state = classify_level_screen(img, _replace_hp(texts, None))
+    assert abs(state.tap[0] - 924) <= 15 and abs(state.tap[1] - 2032) <= 15
+    assert "HP unreadable" in caplog.text
+
+
+def test_campfire_english_bodies_pick_the_upgrade_without_rest_or_train_labels():
+    """No English fixture: match restore/heal HP and upgrade/improve skill, not guessed button words."""
+    img = np.zeros((2560, 1440, 3), np.uint8)
+    heal = Text("Recover", 349, 1762, 671, 1828)
+    upgrade = Text("Study", 790, 1762, 1058, 1827)
+    texts = [Text("A short rest", 400, 1360, 1040, 1440), Text("150k/200k", 420, 58, 663, 100),
+             heal, upgrade, Text("Restore", 385, 2240, 640, 2299), Text("30% HP", 369, 2303, 653, 2363),
+             Text("Upgrade 1", 801, 2237, 1051, 2308), Text("existing skill", 793, 2304, 1056, 2361)]
+    high = classify_level_screen(img, texts)
+    assert high.tap == (upgrade.center[0], upgrade.center[1] + config.EVENT_ICON_BELOW_LABEL)
+    low = [Text("40k/200k", 420, 58, 663, 100) if t.text.startswith("150k") else t for t in texts]
+    healed = classify_level_screen(img, low)  # 20%
+    assert healed.tap[0] == heal.center[0]
 
 
 @pytest.mark.parametrize("name", ["lobby_promo_popup.png", "lobby_roulette_popup.png", "en_lobby_spin_popup.png",

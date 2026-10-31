@@ -53,7 +53,7 @@ def test_device_uses_the_emulators_serial_and_adb(monkeypatch):
     seen = []
 
     class Dev:
-        def __init__(self, serial, stop=None, adb=None):
+        def __init__(self, serial, stop=None, adb=None, pause=None):
             seen.append((serial, adb))
             raise RuntimeError("enough")
     monkeypatch.setattr(main, "Device", Dev)
@@ -111,7 +111,7 @@ class FakeNav:
 
 def run_with(monkeypatch, nav, results, request):
     class Dev:
-        def __init__(self, serial, stop=None, adb=None):
+        def __init__(self, serial, stop=None, adb=None, pause=None):
             pass
 
     class FakePlayer:
@@ -207,23 +207,25 @@ def test_routine_not_run_without_full(monkeypatch):
 def test_stop_event_reaches_the_device_and_is_cleared_on_start(monkeypatch):
     import threading
     stop = threading.Event()
+    pause = threading.Event()
     stop.set()  # left over from a previous stopped run
+    pause.set()  # and a pause, which must not carry into the next Start
     seen = []
 
     class Dev:
-        def __init__(self, serial, stop=None, adb=None):
-            seen.append((stop, stop.is_set()))
+        def __init__(self, serial, stop=None, adb=None, pause=None):
+            seen.append((stop, stop.is_set(), pause, pause.is_set()))
             raise RuntimeError("enough")
     monkeypatch.setattr(main, "Device", Dev)
     with pytest.raises(RuntimeError):
-        main.make_runner(dry_run=True, stop=stop)(RunRequest(Mode.NORMAL, None))
-    assert seen == [(stop, False)] and FakeEmulator.stop is stop  # the emulator waits can be stopped too
+        main.make_runner(dry_run=True, stop=stop, pause=pause)(RunRequest(Mode.NORMAL, None))
+    assert seen == [(stop, False, pause, False)] and FakeEmulator.stop is stop  # the emulator waits can be stopped too
 
 
 def run_loop(monkeypatch, nav, results, on_wait, full=True):
     """Loop request; the device's wait() (energy refill time) is simulated by on_wait."""
     class Dev:
-        def __init__(self, serial, stop=None, adb=None):
+        def __init__(self, serial, stop=None, adb=None, pause=None):
             pass
 
         def wait(self, seconds):

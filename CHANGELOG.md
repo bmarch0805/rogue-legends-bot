@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Campfire ("Un Momento de Descanso"): the bot upgrades a skill. It restores HP only when the top-bar heart line is under 40%. If that line cannot be read, it still upgrades (the "39% de HP" under Descansar is the heal amount, not the current HP).
+- Shops buy skills of the build only (your damage-type order, then rarity). They no longer spend leftover coins on other cards. A level-up with no named damage type uses the reroll before taking an untyped skill. A damage type written on the card (shuriken, venom, …) wins over a stale saved tag.
+- Star Challenge keeps scrolling until the target level is on screen. One drag that does not move the list is tried again; the search no longer stops after a short scroll.
+- Pause holds the bot at the next screenshot or tap so you can fix the game by hand. Resume continues the same run. Stop still ends it.
+
 ## 1.9.1 (2026-10-31)
 - Star Challenge no longer opens Boss Rush: with Boss Rush (or other Rush/Challenge events) featured, the bot used to tap the first "Challenge" on screen — often the event banner. It now only taps the Star Challenge control just above Start (English split "Star" / "Challenge", full "Star Challenge", or Spanish "Desafío de Estrellas"), and ignores Boss Rush, Wish Challenge, Chest Rush, and Egg Rush.
 - Quick Patrol closes on its own: opening Quick Patrol used to leave the bot stuck tapping the dimmed Patrol ✕ underneath. It now closes the Quick Patrol sheet first (`Closing Quick Patrol` in the log), then the Patrol menu.

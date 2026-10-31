@@ -100,10 +100,12 @@ def _wait_for_energy(nav: Navigator, device: Device) -> None:
         device.wait(config.ENERGY_WAIT_POLL)
 
 
-def make_runner(dry_run: bool, stop: threading.Event | None = None) -> Callable[[RunRequest], Report]:
+def make_runner(dry_run: bool, stop: threading.Event | None = None,
+                pause: threading.Event | None = None) -> Callable[[RunRequest], Report]:
     """The UI's Start action: starts MuMu Player and opens Rogue Legend if needed (emulator.py), so
     a missing emulator or game shows up as an error in the window instead of crashing at launch.
-    Setting `stop` makes the run raise device.Stopped at its next wait, screenshot or tap."""
+    Setting `stop` makes the run raise device.Stopped at its next wait, screenshot or tap.
+    Setting `pause` holds that same call until Resume, without ending the run."""
     ocr: Ocr | None = None
     catalog: Catalog | None = None
 
@@ -113,7 +115,7 @@ def make_runner(dry_run: bool, stop: threading.Event | None = None) -> Callable[
         nonlocal ocr, catalog
         request = state["request"]
         serial, adb, launched = Emulator(request.mumu_folder, stop).start()
-        device = Device(serial, stop=stop, adb=adb)
+        device = Device(serial, stop=stop, adb=adb, pause=pause)
         ocr = ocr or Ocr()
         catalog = catalog or Catalog()
         nav = Navigator(device, ocr, dry_run=dry_run, ads=request.ads)
@@ -181,6 +183,8 @@ def make_runner(dry_run: bool, stop: threading.Event | None = None) -> Callable[
         MAX_SAME_ERROR times in a row (no level or routine part finished in between) stops the bot with that error."""
         if stop is not None:
             stop.clear()
+        if pause is not None:
+            pause.clear()
         state = {"request": request, "results": [], "parts": [], "routine_done": False}
         errors: dict[str, int] = {}
         progress = 0
@@ -243,7 +247,15 @@ def main() -> int:
     if getattr(sys, "frozen", False):
         settings.seed_data(settings.DATA_DIR, Path(sys._MEIPASS) / "data" / "skills.json")
     stop = threading.Event()
-    App(make_runner(args.dry_run, stop), stop=stop.set).mainloop()
+    pause = threading.Event()
+
+    def set_paused(paused: bool) -> None:
+        if paused:
+            pause.set()
+        else:
+            pause.clear()
+
+    App(make_runner(args.dry_run, stop, pause), stop=stop.set, pause=set_paused).mainloop()
     return 0
 
 

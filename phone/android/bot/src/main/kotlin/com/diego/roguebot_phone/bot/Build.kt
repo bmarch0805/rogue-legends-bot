@@ -35,18 +35,27 @@ object Choice {
     /** Rarest first, then top to bottom. */
     fun fallback(skills: List<Skill>): List<Int> = skills.indices.sortedWith(compareBy({ rarity(skills[it]) }, { it }))
 
+    /** Wanted skills that name a damage type, or a support skill when one is due. Untyped damage is left out. */
+    private fun preferred(skills: List<Skill>, build: Build, state: BuildState): List<Int> =
+        ranked(skills, build, state).filter { skills[it].role == Skills.SUPPORT || skills[it].damageType != null }
+
     /** Index of the card to take, or null to use the reroll. */
     fun choose(skills: List<Skill>, build: Build, state: BuildState, canReroll: Boolean): Int? {
-        val wanted = ranked(skills, build, state)
-        if (wanted.isNotEmpty()) return wanted[0]
+        val pref = preferred(skills, build, state)
+        if (pref.isNotEmpty()) return pref[0]
         if (canReroll) return null
+        val wanted = ranked(skills, build, state)
+        if (wanted.isNotEmpty()) return wanted[0]  // untyped damage of the right nature, no reroll left
         return fallback(skills)[0]
     }
 
-    /** Buying order for the shop's skills, or null to use the (free) reroll first. */
-    fun shopOrder(skills: List<Skill>, build: Build, state: BuildState, canReroll: Boolean): List<Int>? {
+    /** Buying order, or null to use the (free) reroll first. `fill` keeps off-build cards (dojo/raid). */
+    fun shopOrder(skills: List<Skill>, build: Build, state: BuildState, canReroll: Boolean, fill: Boolean = true): List<Int>? {
         val wanted = ranked(skills, build, state)
         if (wanted.isEmpty() && canReroll) return null
-        return wanted + fallback(skills).filter { it !in wanted }
+        if (fill) return wanted + fallback(skills).filter { it !in wanted }
+        val pref = preferred(skills, build, state)
+        if (pref.isEmpty() && canReroll) return null
+        return pref.ifEmpty { wanted }
     }
 }

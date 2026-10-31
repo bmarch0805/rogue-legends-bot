@@ -734,6 +734,73 @@ def test_pending_stars_scrolls_up_then_gives_up_at_level_1(monkeypatch):
     assert nav.started == [] and len(nav.drags) == 1 and nav.drags[0] < 0  # dragged towards lower levels
 
 
+def _level_page(start, y0=700):
+    return [_card(start + i, 3, y0 + i * config.CARD_PITCH) for i in range(3)]
+
+
+def test_scroll_to_keeps_going_until_a_far_level_is_visible(monkeypatch):
+    """The list opens near the end. A target many cards above used to die after 15 short scrolls."""
+    pages = [_level_page(50 - 2 * i) for i in range(22)]  # 50, 48, ... then 8, and one settled frame
+    pages.append(_level_page(8))
+    nav = _star_nav(monkeypatch, pages)
+    card = nav._scroll_to(8)
+    assert card.number == 8
+    assert len(nav.drags) > 15  # the old limit, which stopped the cycle with the level still off screen
+
+
+def test_scroll_to_retries_a_drag_that_does_not_move_then_stops(monkeypatch):
+    from roguebot.navigation import SCROLL_STUCK_TRIES, LevelUnavailable
+    stuck = [_card(40, 3, 1080), _card(41, 3, 1650)]
+    nav = _star_nav(monkeypatch, [stuck] * 6)
+    with pytest.raises(LevelUnavailable, match="not found"):
+        nav._scroll_to(8)
+    assert len(nav.drags) == SCROLL_STUCK_TRIES
+
+
+def test_scroll_to_retries_once_when_the_list_does_not_move(monkeypatch):
+    high = [_card(40, 3, 1080), _card(41, 3, 1650)]
+    target = [_card(8, 3, 1080)]
+    nav = _star_nav(monkeypatch, [high, high, target, target])
+    assert nav._scroll_to(8).number == 8
+    assert len(nav.drags) == 2  # the drag that did nothing is tried again, then the card is there
+
+
+def test_pending_stars_retries_a_scroll_that_does_not_move(monkeypatch):
+    from roguebot.screens import Mode
+    high = [_card(12, 3, 1080), _card(13, 3, 1650)]
+    low = [_card(4, 1, 1080), _card(5, 3, 1650)]
+    nav = _star_nav(monkeypatch, [high, high, low])
+    nav._scroll_to = lambda level: _card(level, 1, 1080)
+    assert nav.start_pending_stars(Mode.NORMAL) == 4
+    assert nav.drags == [-config.MAX_DRAG, -config.MAX_DRAG]
+
+
+def test_pause_blocks_until_resume_and_stop_still_ends_the_run():
+    import threading
+    import time
+    from roguebot.device import Stopped, wait_while_paused
+    pause, stop = threading.Event(), threading.Event()
+    pause.set()
+
+    def resume():
+        time.sleep(0.35)
+        pause.clear()
+    threading.Thread(target=resume).start()
+    t0 = time.monotonic()
+    assert wait_while_paused(pause, stop) is True
+    assert time.monotonic() - t0 >= 0.3
+    assert wait_while_paused(pause, stop) is False  # already resumed: not a wait
+
+    pause.set()
+
+    def stopper():
+        time.sleep(0.2)
+        stop.set()
+    threading.Thread(target=stopper).start()
+    with pytest.raises(Stopped):
+        wait_while_paused(pause, stop)
+
+
 def test_version():
     import roguebot
     assert roguebot.__version__ == "1.9.0"

@@ -240,6 +240,77 @@ object Screens {
         return n > 0 && sum / n > Config.EVENT_DISABLED_MAX_SATURATION
     }
 
+    // "107,2k/152,5k". A k/m/b suffix is required so the energy "12/32" never matches.
+    private val HP_LINE = Regex("^(\\d+(?:[.,]\\d+)?)([kmb])?/(\\d+(?:[.,]\\d+)?)([kmb])?$")
+    private val HEAL_BODY = Regex("(restaura\\w*|restaur\\w*|heal|restore|curar\\w*).{0,30}hp|hp.{0,20}(restaura|heal|restore|curar)")
+    private val UPGRADE_BODY = Regex("(mejora\\w*|upgrade|improve|level up).{0,40}(habilidad|skill)|(habilidad|skill).{0,30}(existente|existing)")
+
+    private fun scaledHp(num: String, suffix: String): Double? {
+        val value = num.replace(',', '.').toDoubleOrNull() ?: return null
+        val scale = when (suffix) {
+            "" -> 1.0
+            "k" -> 1e3
+            "m" -> 1e6
+            "b" -> 1e9
+            else -> return null
+        }
+        return value * scale
+    }
+
+    /** Current/max HP from the top-bar heart line. The heal option's "39% de HP" is the heal amount. */
+    fun parseHpRatio(texts: List<Text>): Double? {
+        for (t in texts) {
+            if (t.center.y > Config.TOP_BAR_MAX_Y || t.center.x !in Config.HP_X) continue
+            val m = HP_LINE.find(t.norm.replace(" ", "")) ?: continue
+            if (m.groupValues[2].isEmpty() && m.groupValues[4].isEmpty()) continue
+            val current = scaledHp(m.groupValues[1], m.groupValues[2]) ?: continue
+            val maximum = scaledHp(m.groupValues[3], m.groupValues[4]) ?: continue
+            if (maximum <= 0.0) continue
+            return current / maximum
+        }
+        return null
+    }
+
+    private fun columnBlob(label: Text, texts: List<Text>): String {
+        val parts = ArrayList<String>()
+        parts.add(label.norm)
+        for (t in texts) {
+            if (t.center.y <= label.center.y) continue
+            if (kotlin.math.abs(t.center.x - label.center.x) <= Config.EVENT_COLUMN_X) parts.add(t.norm)
+        }
+        return parts.joinToString(" ")
+    }
+
+    private fun isHealOption(label: Text, blob: String) =
+        matches(label, L.CAMPFIRE_REST, exact = true) || HEAL_BODY.containsMatchIn(blob)
+
+    private fun isUpgradeOption(label: Text, blob: String) =
+        matches(label, L.CAMPFIRE_TRAIN, exact = true) || UPGRADE_BODY.containsMatchIn(blob)
+
+    /** Campfire option to tap, or null if this event is not the rest/campfire. Upgrade unless HP < 40%. */
+    private fun campfireLabel(labels: List<Text>, texts: List<Text>): Text? {
+        var heal: Text? = null
+        var upgrade: Text? = null
+        for (label in labels) {
+            val blob = columnBlob(label, texts)
+            if (upgrade == null && isUpgradeOption(label, blob)) upgrade = label
+            else if (heal == null && isHealOption(label, blob)) heal = label
+        }
+        if (heal == null && upgrade == null) return null
+        val ratio = parseHpRatio(texts)
+        if (ratio != null && ratio < Config.CAMPFIRE_HEAL_BELOW && heal != null) {
+            Log.info("Campfire: HP %.1f%% < 40%%, restoring HP".format(ratio * 100))
+            return heal
+        }
+        if (upgrade != null) {
+            if (ratio == null) Log.info("Campfire: HP unreadable, upgrading skill")
+            else Log.info("Campfire: HP %.1f%%, upgrading skill".format(ratio * 100))
+            return upgrade
+        }
+        Log.info("Campfire: skill upgrade not readable, restoring HP")
+        return heal
+    }
+
     private fun eventOption(img: Frame, texts: List<Text>): P? {
         val hasTitle = texts.any {
             it.center.y in Config.EVENT_TITLE_Y && kotlin.math.abs(it.center.x - Config.SCREEN_W / 2) < Config.EVENT_TITLE_CENTER_TOLERANCE
@@ -247,7 +318,9 @@ object Screens {
         var labels = texts.filter { it.center.y in Config.EVENT_LABEL_Y }
         if (!hasTitle || labels.isEmpty()) return null
         labels = labels.filter { optionEnabled(img, it) }.ifEmpty { labels }
-        val label = labels.firstOrNull { matches(it, L.LEAVE, exact = true) } ?: labels.minBy { it.center.x }
+        val label = campfireLabel(labels, texts)
+            ?: labels.firstOrNull { matches(it, L.LEAVE, exact = true) }
+            ?: labels.minBy { it.center.x }
         return P(label.center.x, label.center.y + Config.EVENT_ICON_BELOW_LABEL)
     }
 
