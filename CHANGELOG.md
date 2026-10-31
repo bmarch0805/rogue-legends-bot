@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1 (2026-10-31)
+- Star Challenge no longer opens Boss Rush: with Boss Rush (or other Rush/Challenge events) featured, the bot used to tap the first "Challenge" on screen — often the event banner. It now only taps the Star Challenge control just above Start (English split "Star" / "Challenge", full "Star Challenge", or Spanish "Desafío de Estrellas"), and ignores Boss Rush, Wish Challenge, Chest Rush, and Egg Rush.
+- Quick Patrol closes on its own: opening Quick Patrol used to leave the bot stuck tapping the dimmed Patrol ✕ underneath. It now closes the Quick Patrol sheet first (`Closing Quick Patrol` in the log), then the Patrol menu.
+- No gem, gold, or energy spends added. Phone engine got the same recognition logic.
+
 ## 1.9.0 (2026-10-28)
 - Uses far less CPU: about 1.5 cores on average while running instead of 2.6–3.8 (−60% to −65% CPU per screen read), at the same speed in levels and ~35% faster when going back to the lobby and in the full routine. The text reader no longer keeps the processor busy while it waits, uses at most 4 cores, and no longer runs a step that turned short texts upside down, so it now reads texts like "x1", "x5", "Modos" or "3,3m" correctly. Finding the ✕, back arrow and tutorial hand on screen is ~15 times faster.
 - Uses far less memory: ~120 MB committed instead of ~600 MB. Most of it was reserved at startup by a math library the bot doesn't need, once per processor core.
