@@ -51,3 +51,7 @@ opens the emulator and the game when they are closed, and shows any problem in r
 run at the next step.
 
 See `CLAUDE.md` for how it works inside: architecture, game knowledge, and every screen the bot knows.
+
+## 1.10.0 Known Issues
+
+1. Hangs on Monk Spin when claiming skill
