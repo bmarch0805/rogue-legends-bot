@@ -52,7 +52,7 @@ run at the next step.
 
 See `CLAUDE.md` for how it works inside: architecture, game knowledge, and every screen the bot knows.
 
-## 1.10.0 Known Issues
+## 1.10.0 Known Issues - Planned Upgrades
 
 1. Hangs on Monk Spin when claiming skill
 2. Shop logic won't use low amount of coins to refresh, it will be added in the next update.
