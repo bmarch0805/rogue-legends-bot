@@ -89,6 +89,9 @@ object L {
     val CAMPFIRE_REST = l("descansar")   // exact; campfire heart. English button not seen.
     val CAMPFIRE_TRAIN = l("entrenar")   // exact; campfire book. English button not seen.
     val FORTUNE_TELLER = l("adivino", "fortune teller")
+    val MONK = l("monje sabio", "wise monk")
+    val MONK_SPIN = l("girar", "spin")  // exact; not "girar!" (lucky wheel)
+    val FIGHT_SKIP = l(en = "skip")     // exact; green fight button. Spanish not seen.
     val FIGHT_ROUND = l("ronda", "round")
     val REVIVE_PROMPT = l("revivir ahora", "revive")
     val REVIVE_FREE = l("gratis", "free")

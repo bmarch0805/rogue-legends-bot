@@ -91,6 +91,35 @@ def patrol_seconds(text: str) -> int | None:
     return a * 3600 + b * 60 + c if c is not None else a * 60 + b
 
 
+_CLOCK_RE = re.compile(r"(\d+):(\d{2})(?::(\d{2}))?")
+
+
+def clock_seconds(text: str) -> int | None:
+    """A bare clock ("8:00:00" or "28:13"), including one OCR split onto the next line."""
+    m = _CLOCK_RE.search(text)
+    if not m:
+        return None
+    a, b = int(m.group(1)), int(m.group(2))
+    c = m.group(3)
+    return a * 3600 + b * 60 + int(c) if c is not None else a * 60 + b
+
+
+def patrol_elapsed(texts: list[Text]) -> int | None:
+    """Seconds on the patrol counter. The clock can sit on the line under the label."""
+    timer = find(texts, L.PATROL_TIME)
+    if not timer:
+        return None
+    seconds = patrol_seconds(timer.norm)
+    if seconds is not None:
+        return seconds
+    for t in texts:
+        if 0 <= t.center[1] - timer.center[1] <= 90 and abs(t.center[0] - timer.center[0]) < 280:
+            seconds = clock_seconds(t.norm)
+            if seconds is not None:
+                return seconds
+    return None
+
+
 def parse_patrol(texts: list[Text]) -> PatrolPopup | None:
     """The Patrulla popup (lobby). Below it there is a "Tarjeta Mensual VIP" offer: never tapped."""
     if not find(texts, L.PATROL_TIME) or find(texts, L.QUICK_PATROL_TEXT):
@@ -98,8 +127,7 @@ def parse_patrol(texts: list[Text]) -> PatrolPopup | None:
     row = [t for t in texts if config.PATROL_BUTTONS_Y[0] <= t.center[1] <= config.PATROL_BUTTONS_Y[1]]
     claim = next((t for t in row if matches(t, L.PATROL_CLAIM, exact=True)), None)
     quick = next((t for t in row if matches(t, L.QUICK_PATROL)), None)
-    timer = find(texts, L.PATROL_TIME)
-    return PatrolPopup(claim, quick, patrol_seconds(timer.norm)) if claim and quick else None
+    return PatrolPopup(claim, quick, patrol_elapsed(texts)) if claim and quick else None
 
 
 @dataclass(frozen=True)
@@ -194,6 +222,34 @@ def parse_quick_patrol(img: np.ndarray, texts: list[Text]) -> QuickPatrol | None
             energy, cost = t, int(m.group(1))
             break
     return QuickPatrol(video, energy, cost)
+
+
+def _lime_skip(img: np.ndarray, center: tuple[int, int]) -> bool:
+    """The paid Skip button is lime (high red and green, low blue). The locked one is grey."""
+    x, y = center
+    h, w = img.shape[:2]
+    roi = img[max(0, y - 50):min(h, y + 50), max(0, x - 120):min(w, x + 120)]
+    if roi.size == 0:
+        return False
+    b, g, r = roi[..., 0].astype(int), roi[..., 1].astype(int), roi[..., 2].astype(int)
+    lime = (g > 140) & (r > 130) & (b < 120) & (g + 15 >= r)
+    return float(lime.mean()) > config.SKIP_LIME_MIN_FRACTION
+
+
+def fight_skip(img: np.ndarray | None, texts: list[Text]) -> Text | None:
+    """The green Skip button on a mode fight (arena, tower, ...).
+
+    The grey button opens a paid offer and is never returned. "Skip" inside a VIP
+    offer sits well above the fight bar, so it does not match either.
+    """
+    if img is None:
+        return None
+    button = find(texts, L.FIGHT_SKIP, exact=True)
+    if button is None or button.center[1] < config.FIGHT_SKIP_MIN_Y:
+        return None
+    if not _lime_skip(img, button.center):
+        return None
+    return button
 
 
 def is_modes_list(texts: list[Text]) -> bool:

@@ -60,8 +60,31 @@ def parse_lobby(texts: list[Text]) -> Lobby | None:
     start = find(texts, START_LABEL[mode], exact=True)
     if not start:
         return None
-    title = next((t.text for t in texts if parse_level_number(t.text) is not None), None)
-    return Lobby(mode, title, start, star_challenge_button(texts, start), parse_energy(texts), has_elite)
+    return Lobby(mode, lobby_level_title(texts, start), start, star_challenge_button(texts, start), parse_energy(texts), has_elite)
+
+
+def lobby_level_title(texts: list[Text], start: Text) -> str | None:
+    """The centered "N. Name" above Start.
+
+    The first text that looks like a level used to win. A side label ("38. ...") then got
+    pinned after a win while the real last-unlocked title was ~76. Side columns are ignored.
+    With nothing centered, the old first-match is kept so a odd layout still has a title.
+    """
+    mid = config.SCREEN_SIZE[0] // 2
+    above_lo, above_hi = config.LOBBY_TITLE_ABOVE
+    candidates = []
+    for t in texts:
+        if parse_level_number(t.text) is None:
+            continue
+        x, y = t.center
+        if abs(x - mid) > config.LOBBY_TITLE_DX:
+            continue
+        if not (above_lo <= start.center[1] - y <= above_hi):
+            continue
+        candidates.append(t)
+    if candidates:
+        return min(candidates, key=lambda t: (abs(t.center[0] - mid), t.center[1])).text
+    return next((t.text for t in texts if parse_level_number(t.text) is not None), None)
 
 
 # Event tiles that share a word with Star Challenge. Never the lobby control above Start.
@@ -281,6 +304,7 @@ class LevelScreen(Enum):
     SHOP = "shop"                # shop tile; we buy nothing and press "Salir"
     LEAVE = "leave"              # screens we just exit: a lone "Salir"
     FORTUNE_TELLER = "fortune_teller"  # "Adivino": 100/70/40% balls paid with orbs; tap = its back arrow
+    MONK = "monk"                # "Monje Sabio" / "Wise Monk": spin twice, then leave. HP is ignored.
     CONTINUE = "continue"        # screen whose only action is one button (see labels.CONTINUE_BUTTONS)
     DICE_DUEL = "dice_duel"      # "¡Batalla de Dados!" 21-style minigame
     FLIP_CARDS = "flip_cards"    # "Excavar en Busca de Tesoro" memory minigame; flip face-down cards in order
@@ -490,6 +514,12 @@ def classify_level_screen(img: np.ndarray, texts: list[Text]) -> LevelState:
                                                        first.center[1] + config.SKILL_TAP_BELOW_RARITY))
     if proceed and find(texts, L.LEVEL_MODIFIERS, exact=True):  # elite level intro: modifiers + Continue
         return LevelState(LevelScreen.CONTINUE, proceed.center)
+    if find(texts, L.MONK):  # before GIRAR/SPIN is taken as a generic continue: the player spins twice
+        spin = find(texts, L.MONK_SPIN, exact=True)
+        if spin and spin.center[1] > config.MONK_SPIN_MIN_Y:
+            return LevelState(LevelScreen.MONK, spin.center)
+        leave = find(texts, L.LEAVE, exact=True)
+        return LevelState(LevelScreen.MONK, leave.center if leave else None)
     button = find(texts, L.EXACT_BUTTONS, exact=True)
     if button:
         return LevelState(LevelScreen.CONTINUE, button.center)

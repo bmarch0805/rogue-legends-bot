@@ -41,10 +41,15 @@ class MainActivity : FlutterActivity() {
                     askNotifications()
                     try {
                         @Suppress("UNCHECKED_CAST")
-                        val build = BotBuild(call.argument<String>("nature")!!, call.argument<List<String>>("order")!!,
-                            call.argument<Int>("supportEvery"))
+                        val preset = call.argument<String>("preset") ?: "custom"
+                        val fromPreset = com.diego.roguebot_phone.bot.PRESETS[preset]
+                        val supportEvery = call.argument<Int>("supportEvery")
+                        val build = if (fromPreset != null) fromPreset.copy(supportEvery = supportEvery) else BotBuild(
+                            call.argument<String>("nature")!!, call.argument<List<String>>("order")!!, supportEvery)
                         val request = buildRequest(call.argument("mode")!!, call.argument("source")!!, call.argument("level")!!,
-                            call.argument("full")!!, build, call.argument("loop")!!, call.argument("ads")!!)
+                            call.argument("full")!!, build, call.argument("loop")!!, call.argument("ads")!!,
+                            call.argument<Int>("eliteCost") ?: Config.ELITE_COST_DEFAULT,
+                            call.argument<Boolean>("skipFights") ?: false)
                         when {
                             BotService.instance == null -> result.success("err_service")
                             Engine.running -> result.success(null)

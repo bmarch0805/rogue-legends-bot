@@ -380,6 +380,24 @@ def test_patrol_seconds(text, seconds):
     assert patrol_seconds(text) == seconds
 
 
+def test_patrol_elapsed_reads_a_clock_on_the_next_line():
+    from roguebot.mode_screens import patrol_elapsed
+    labels.set_language("es")
+    texts = [Text("Tiempo de patrulla:", 500, 1000, 900, 1050), Text("8:00:00", 560, 1060, 760, 1110)]
+    assert patrol_elapsed(texts) == 8 * 3600
+
+
+def test_green_skip_is_the_lime_button_only():
+    from roguebot.mode_screens import fight_skip
+    labels.set_language("en")
+    arena = cv2.imread(str(FIXTURES / "en_arena_fight.png"))
+    tower = cv2.imread(str(FIXTURES / "en_tower_fight.png"))
+    offer = cv2.imread(str(FIXTURES / "en_vip_offer.png"))
+    assert fight_skip(arena, [Text("Skip", 430, 2340, 670, 2460)]) is not None
+    assert fight_skip(tower, [Text("Skip", 760, 2360, 1060, 2490)]) is None  # grey: opens a purchase
+    assert fight_skip(offer, [Text("Skip", 400, 1400, 520, 1460)]) is None  # the word inside the offer
+
+
 @pytest.mark.parametrize("name, seconds", [("patrol.png", 28 * 60 + 13), ("en_patrol.png", 88)])
 def test_patrol_popup_reads_the_counter(ocr, name, seconds):
     from roguebot.mode_screens import parse_patrol

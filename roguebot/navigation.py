@@ -34,11 +34,12 @@ LANGUAGE_ATTEMPTS = 3
 
 IN_LEVEL = (LevelScreen.BOARD_READY, LevelScreen.AUTO_PLAY, LevelScreen.FIGHT, LevelScreen.SKILL_PICK, LevelScreen.SHOP,
             LevelScreen.EVENT, LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.VICTORY,
-            LevelScreen.DEFEAT, LevelScreen.DOUBLE_REWARD, LevelScreen.FORTUNE_TELLER)  # only seen inside a level (not Continue/Leave buttons)
+            LevelScreen.DEFEAT, LevelScreen.DOUBLE_REWARD, LevelScreen.FORTUNE_TELLER, LevelScreen.MONK)  # only seen inside a level (not Continue/Leave buttons)
 # A level board found by go_to_lobby, played out instead of failing (the level is lost on a restart). Not
 # fights or skill picks alone: dojo and raid fights have them too.
 ON_BOARD = (LevelScreen.BOARD_READY, LevelScreen.AUTO_PLAY, LevelScreen.SHOP, LevelScreen.EVENT,
-            LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.FORTUNE_TELLER)
+            LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.FORTUNE_TELLER,
+            LevelScreen.MONK)
 
 
 class NavigationError(Exception):
@@ -57,6 +58,19 @@ class EliteUnavailable(LevelUnavailable):
     """Elite mode is not unlocked on this account."""
 
 
+def elite_spend(chosen: int, energy: int) -> int | None:
+    """Energy for one elite run.
+
+    The chosen tier (5, 10 or 15) when the counter can pay it. Otherwise the highest
+    tier that is both affordable and not above the chosen one: 15 with 12 energy is 10,
+    10 with 7 energy is 5. None when even the cheapest tier does not fit.
+    """
+    if chosen not in config.ELITE_COSTS:
+        chosen = config.ELITE_COST_DEFAULT
+    affordable = [cost for cost in config.ELITE_COSTS if cost <= chosen and cost <= energy]
+    return max(affordable) if affordable else None
+
+
 def _same_place(a: Text, b: Text) -> bool:
     return abs(a.center[0] - b.center[0]) < 20 and abs(a.center[1] - b.center[1]) < 20
 
@@ -68,11 +82,13 @@ def _still_there(button: Text, texts: list[Text]) -> bool:
 
 
 class Navigator:
-    def __init__(self, device: Device, ocr: Ocr, dry_run: bool = False, ads: bool = False):
+    def __init__(self, device: Device, ocr: Ocr, dry_run: bool = False, ads: bool = False,
+                 elite_cost: int = config.ELITE_COST_DEFAULT):
         self.device = device
         self.ocr = ocr
         self.dry_run = dry_run
         self.ads = ads  # watch ads (energy videos); only with an account that skips them
+        self.elite_cost = elite_cost if elite_cost in config.ELITE_COSTS else config.ELITE_COST_DEFAULT
         self.resume_level: Callable[[], object] | None = None  # plays an interrupted run to its end
 
     # --- public API -------------------------------------------------------------------
@@ -397,16 +413,26 @@ class Navigator:
             if target and target.header.center[1] < config.LIST_BOTTOM - config.HEADER_ABOVE_BUTTON:
                 # Header well inside the view but no start button below it.
                 self._fail(f"Level {level} is locked", img, LevelUnavailable)
+            lowest = min(numbers)
+            # The list opens at the high end. The same frame twice is not "the list ends" while the
+            # target is still above the lowest card on screen (a drag that did not move).
+            above = level < lowest
             if numbers == prev_numbers:
-                stuck += 1
-                if stuck >= SCROLL_STUCK_TRIES:
-                    self._fail(f"Level {level} not found (list ends at {numbers[-1]})", img, LevelUnavailable)
-                log.info("Star list still shows %s; scrolling again toward level %s", numbers, level)
+                if above:
+                    log.info("Star list still shows %s; level %s is above the lowest card, scrolling up again",
+                             numbers, level)
+                else:
+                    stuck += 1
+                    if stuck >= SCROLL_STUCK_TRIES:
+                        self._fail(f"Level {level} not found (list ends at {numbers[-1]})", img, LevelUnavailable)
+                    log.info("Star list still shows %s; scrolling again toward level %s", numbers, level)
             else:
                 stuck = 0
                 log.info("Star list shows %s; scrolling toward level %s", numbers, level)
             prev_numbers = numbers
-            self._drag_list(self._scroll_delta(cards, level))
+            # A full upward drag when the target is still above this page. A short computed drag
+            # is what used to stop ~30 levels short, and a stuck page needs the long one again.
+            self._drag_list(-config.MAX_DRAG if above else self._scroll_delta(cards, level))
         self._fail(f"Level {level} not reached after {MAX_SCROLLS} scrolls", img)
 
     @staticmethod
@@ -456,19 +482,20 @@ class Navigator:
         self._fail("Level did not start (no in-level screen detected)", img)
 
     def _set_elite_cost(self) -> Text:
-        """Set the elite run cost to the highest of ELITE_COSTS the current energy allows.
+        """Set the elite run cost to the chosen tier when energy allows.
 
         The +/- buttons go up to 15 regardless of energy, so the cap is computed here.
+        The chosen tier is used when the counter can pay it. Otherwise the next lower
+        tier that fits (15 chosen with 12 energy -> 10). Never above the chosen tier.
         Returns the dialog's INICIO button.
         """
         img, texts = self._capture()
         energy = parse_energy(texts)
         if energy is None:
             self._fail("Could not read the energy counter", img)
-        affordable = [c for c in config.ELITE_COSTS if c <= energy]
-        if not affordable:
+        target = elite_spend(self.elite_cost, energy)
+        if target is None:
             self._fail(f"Not enough energy for an elite run ({energy})", img)
-        target = max(affordable)
         for _ in range(2 * len(config.ELITE_COSTS)):
             dialog = parse_elite_dialog(texts)
             if not dialog:

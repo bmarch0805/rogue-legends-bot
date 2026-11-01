@@ -5,12 +5,13 @@ import queue
 import sys
 import threading
 import tkinter as tk
+from dataclasses import replace
 from tkinter import filedialog, ttk
 from pathlib import Path
 from typing import Callable
 
-from roguebot import __version__, emulator, settings
-from roguebot.build import Build
+from roguebot import __version__, config, emulator, settings
+from roguebot.build import PRESETS, Build
 from roguebot.i18n import UI_LANGUAGES, tr
 from roguebot.report import Report, render
 from roguebot.request import BEATEN, LATEST, PENDING, STARS, RunRequest, build_request
@@ -50,6 +51,7 @@ class App:
         saved = settings.load(settings_path)
         lang = lang or (saved.get("lang") if saved.get("lang") in UI_LANGUAGES else "es")
         self.lang = lang
+        self._preset_lock = False
         self.logs: queue.Queue = queue.Queue()
         self._status: tuple[str, dict, str] = ("idle", {}, "black")  # i18n key, args, color
         self._texts: list[tuple[ttk.Widget, str]] = []                 # widgets to retranslate
@@ -106,10 +108,17 @@ class App:
         self._text(ttk.Radiobutton(frame, variable=self.mode, value=Mode.NORMAL.value), "normal").grid(row=2, column=1, sticky="w")
         self._text(ttk.Radiobutton(frame, variable=self.mode, value=Mode.ELITE.value), "elite").grid(row=2, column=2, sticky="w")
 
+        self.elite_cost = tk.StringVar(value=str(config.ELITE_COST_DEFAULT))
+        cost = ttk.Frame(frame)
+        cost.grid(row=3, column=1, columnspan=3, sticky="w")
+        self._text(ttk.Label(frame), "elite_cost").grid(row=3, column=0, sticky="w")
+        for value in config.ELITE_COSTS:
+            ttk.Radiobutton(cost, text=str(value), variable=self.elite_cost, value=str(value)).pack(side="left", padx=(0, 8))
+
         self.source = tk.StringVar(value=LATEST)
-        self._text(ttk.Label(frame), "level").grid(row=3, column=0, sticky="w")
+        self._text(ttk.Label(frame), "level").grid(row=4, column=0, sticky="w")
         sources = ttk.Frame(frame)
-        sources.grid(row=3, column=1, columnspan=3, sticky="w")
+        sources.grid(row=4, column=1, columnspan=3, sticky="w")
         for value, key in ((LATEST, "latest"), (BEATEN, "beaten"), (PENDING, "pending"), (STARS, "stars")):
             self._text(ttk.Radiobutton(sources, variable=self.source, value=value, command=self._toggle_level),
                        key).pack(side="left", padx=(0, 8))
@@ -119,20 +128,24 @@ class App:
 
         self.loop = tk.BooleanVar(value=False)
         self._text(ttk.Checkbutton(frame, variable=self.loop), "loop").grid(
-            row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
+            row=5, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         self.full = tk.BooleanVar(value=False)
         self._text(ttk.Checkbutton(frame, variable=self.full), "full").grid(
-            row=5, column=0, columnspan=4, sticky="w", pady=(4, 0))
+            row=6, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         self.ads = tk.BooleanVar(value=False)
         self._text(ttk.Checkbutton(frame, variable=self.ads), "ads").grid(
-            row=6, column=0, columnspan=4, sticky="w", pady=(4, 0))
+            row=7, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
-        self._build_section(frame).grid(row=7, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        self.skip_fights = tk.BooleanVar(value=False)
+        self._text(ttk.Checkbutton(frame, variable=self.skip_fights), "skip_fights").grid(
+            row=8, column=0, columnspan=4, sticky="w", pady=(4, 0))
+
+        self._build_section(frame).grid(row=9, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=8, column=0, columnspan=4, sticky="ew", pady=8)
+        buttons.grid(row=10, column=0, columnspan=4, sticky="ew", pady=8)
         buttons.columnconfigure((0, 1, 2), weight=1)
         self.start = self._text(ttk.Button(buttons, command=self._start), "start")
         self.start.grid(row=0, column=0, sticky="ew", padx=(0, 4))
@@ -142,11 +155,11 @@ class App:
         self.stop_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
         self.status = ttk.Label(frame, font=("Segoe UI", 11, "bold"))
-        self.status.grid(row=10, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        self.status.grid(row=12, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
         self.log_view = tk.Text(frame, height=12, width=80, state="disabled")
-        self.log_view.grid(row=11, column=0, columnspan=4, sticky="nsew")
-        frame.rowconfigure(11, weight=1)
+        self.log_view.grid(row=13, column=0, columnspan=4, sticky="nsew")
+        frame.rowconfigure(13, weight=1)
         frame.columnconfigure(3, weight=1)
 
         handler = _QueueHandler(self.logs)
@@ -159,28 +172,48 @@ class App:
     def _build_section(self, parent) -> ttk.LabelFrame:
         """Skill preferences: nature, damage type order (move up/down), support every N damage skills."""
         box = self._text(ttk.LabelFrame(parent, padding=8), "build_title")
-        self.nature = tk.StringVar(value=PHYSICAL)
-        self._text(ttk.Label(box), "build_nature").grid(row=0, column=0, sticky="w")
-        self._text(ttk.Radiobutton(box, variable=self.nature, value=PHYSICAL), "physical").grid(row=0, column=1, sticky="w")
-        self._text(ttk.Radiobutton(box, variable=self.nature, value=MAGIC), "magic").grid(row=0, column=2, sticky="w")
+        self.preset = tk.StringVar(value="custom")  # id: custom / shuriken / fire / ...
+        self.preset_label = tk.StringVar()
+        self._text(ttk.Label(box), "preset").grid(row=0, column=0, sticky="w")
+        self.preset_box = ttk.Combobox(box, textvariable=self.preset_label, state="readonly", width=16)
+        self.preset_box.grid(row=0, column=1, columnspan=2, sticky="w")
+        self.preset_box.bind("<<ComboboxSelected>>", lambda _: self._on_preset())
 
-        self._text(ttk.Label(box), "build_order").grid(row=1, column=0, sticky="nw", pady=(6, 0))
+        self.nature = tk.StringVar(value=PHYSICAL)
+        self._text(ttk.Label(box), "build_nature").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self._text(ttk.Radiobutton(box, variable=self.nature, value=PHYSICAL, command=self._mark_custom),
+                   "physical").grid(row=1, column=1, sticky="w", pady=(6, 0))
+        self._text(ttk.Radiobutton(box, variable=self.nature, value=MAGIC, command=self._mark_custom),
+                   "magic").grid(row=1, column=2, sticky="w", pady=(6, 0))
+
+        self._text(ttk.Label(box), "build_order").grid(row=2, column=0, sticky="nw", pady=(6, 0))
         self.damage_order = list(DAMAGE_TYPES)
         self.order_list = tk.Listbox(box, height=len(DAMAGE_TYPES), width=18, exportselection=False)
-        self.order_list.grid(row=1, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        self.order_list.grid(row=2, column=1, columnspan=2, sticky="w", pady=(6, 0))
         moves = ttk.Frame(box)
-        moves.grid(row=1, column=3, sticky="nw", padx=6, pady=(6, 0))
+        moves.grid(row=2, column=3, sticky="nw", padx=6, pady=(6, 0))
         self._text(ttk.Button(moves, command=lambda: self._move(-1)), "move_up").pack(fill="x")
         self._text(ttk.Button(moves, command=lambda: self._move(1)), "move_down").pack(fill="x", pady=(4, 0))
 
         self.support = tk.BooleanVar(value=False)
         self.support_every = tk.StringVar(value="3")
         support = ttk.Frame(box)
-        support.grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        support.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self._text(ttk.Checkbutton(support, variable=self.support), "build_support").pack(side="left")
         ttk.Spinbox(support, from_=1, to=20, width=4, textvariable=self.support_every).pack(side="left", padx=4)
         self._text(ttk.Label(support), "build_support_after").pack(side="left")
         return box
+
+    def _refresh_presets(self) -> None:
+        names = ("custom",) + tuple(PRESETS)
+        self._preset_ids = {tr(self.lang, "preset_" + name): name for name in names}
+        self.preset_box.configure(values=list(self._preset_ids))
+        current = self.preset.get() if self.preset.get() in names else "custom"
+        self.preset_label.set(tr(self.lang, "preset_" + current))
+
+    def _on_preset(self) -> None:
+        self.preset.set(self._preset_ids.get(self.preset_label.get(), "custom"))
+        self._apply_preset()
 
     def _refresh_order(self, selected: int | None = None) -> None:
         self.order_list.delete(0, "end")
@@ -194,19 +227,54 @@ class App:
         sel = self.order_list.curselection()
         if not sel or not 0 <= sel[0] + delta < len(self.damage_order):
             return
+        self._mark_custom()
         i, j = sel[0], sel[0] + delta
         self.damage_order[i], self.damage_order[j] = self.damage_order[j], self.damage_order[i]
         self._refresh_order(j)
 
-    def build(self) -> Build:
+    def _mark_custom(self) -> None:
+        """A hand edit leaves the named preset. The preset's avoid list would no longer match."""
+        if self._preset_lock or self.preset.get() == "custom":
+            return
+        self._preset_lock = True
+        self.preset.set("custom")
+        self.preset_label.set(tr(self.lang, "preset_custom"))
+        self._preset_lock = False
+
+    def _apply_preset(self) -> None:
+        """Fill nature, type order and support from the named preset. Custom leaves them alone."""
+        if self._preset_lock:
+            return
+        preset = PRESETS.get(self.preset.get())
+        if preset is None:
+            return
+        self._preset_lock = True
+        self.nature.set(preset.nature)
+        rest = [damage_type for damage_type in DAMAGE_TYPES if damage_type not in preset.order]
+        self.damage_order = list(preset.order) + rest
+        self.support.set(preset.support_every is not None)
+        if preset.support_every:
+            self.support_every.set(str(preset.support_every))
+        self._refresh_order()
+        self._preset_lock = False
+
+    def _support_every(self) -> int | None:
         every = self.support_every.get().strip()
-        support_every = int(every) if self.support.get() and every.isdigit() and int(every) > 0 else None
+        return int(every) if self.support.get() and every.isdigit() and int(every) > 0 else None
+
+    def build(self) -> Build:
+        support_every = self._support_every()
+        preset = PRESETS.get(self.preset.get())
+        if preset is not None:
+            return replace(preset, support_every=support_every)
         return Build(self.nature.get(), tuple(self.damage_order), support_every)
 
     def options(self) -> dict:
         """Every user choice, as saved between sessions."""
         values = {"lang": self.lang, "mode": self.mode.get(), "source": self.source.get(), "level": self.level.get(),
                   "full": self.full.get(), "loop": self.loop.get(), "ads": self.ads.get(),
+                  "elite_cost": int(self.elite_cost.get()) if self.elite_cost.get().isdigit() else config.ELITE_COST_DEFAULT,
+                  "skip_fights": self.skip_fights.get(), "preset": self.preset.get(),
                   "nature": self.nature.get(), "damage_order": list(self.damage_order),
                   "support": self.support.get(), "support_every": self.support_every.get()}
         if emulator.tools(self.mumu_folder.get() or "-"):
@@ -221,7 +289,7 @@ class App:
             if saved.get(key) in choices:
                 var.set(saved[key])
         for var, key in ((self.full, "full"), (self.loop, "loop"), (self.ads, "ads"),
-                         (self.support, "support")):
+                         (self.support, "support"), (self.skip_fights, "skip_fights")):
             if isinstance(saved.get(key), bool):
                 var.set(saved[key])
         for var, key in ((self.level, "level"), (self.support_every, "support_every")):
@@ -229,6 +297,12 @@ class App:
                 var.set(str(saved[key]))
         if sorted(saved.get("damage_order") or []) == sorted(DAMAGE_TYPES):
             self.damage_order = list(saved["damage_order"])
+        if saved.get("elite_cost") in config.ELITE_COSTS:
+            self.elite_cost.set(str(saved["elite_cost"]))
+        if saved.get("preset") == "custom" or saved.get("preset") in PRESETS:
+            self.preset.set(saved["preset"])
+        if self.preset.get() in PRESETS:
+            self._apply_preset()
         self._toggle_level()
 
     def _save_options(self) -> None:
@@ -254,6 +328,7 @@ class App:
         for widget, key in self._texts:
             widget.configure(text=tr(lang, key))
         sel = self.order_list.curselection()
+        self._refresh_presets()
         self._refresh_order(sel[0] if sel else None)
         self._check_folder()
         self._show_status()
@@ -302,9 +377,10 @@ class App:
     def _start(self) -> None:
         self._save_options()
         try:
+            cost = int(self.elite_cost.get()) if self.elite_cost.get().isdigit() else config.ELITE_COST_DEFAULT
             request = build_request(self.mode.get(), self.source.get(), self.level.get(),
                                     self.full.get(), self.build(), self.loop.get(), self.mumu_folder.get(),
-                                    self.ads.get())
+                                    self.ads.get(), elite_cost=cost, skip_fights=self.skip_fights.get())
         except ValueError as e:
             self._set_status(str(e), "red")
             return

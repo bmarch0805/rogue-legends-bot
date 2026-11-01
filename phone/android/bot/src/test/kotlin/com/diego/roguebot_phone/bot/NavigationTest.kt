@@ -21,7 +21,8 @@ class NavigationTest {
     private val clock = FakeClock()
 
     /** A real Navigator (its own go_to_lobby) whose captures follow the script. */
-    private fun nav(device: Device, script: Script, ads: Boolean = false) = ScriptNav(device, script, FakeOcr(), clock, ads, real = true)
+    private fun nav(device: Device, script: Script, ads: Boolean = false, eliteCost: Int = Config.ELITE_COST_DEFAULT) =
+        ScriptNav(device, script, FakeOcr(), clock, ads, real = true, eliteCost = eliteCost)
 
     private fun near(want: P, got: P) = assertTrue("want $want got $got", abs(want.x - got.x) <= 4 && abs(want.y - got.y) <= 4)
 
@@ -299,7 +300,7 @@ class NavigationTest {
         fun dialog(cost: Int) = listOf(t("Modo Élite", 560, 600, 880, 650), t("INICIO", 600, 1880, 840, 1930),
             t("x$cost", 690, 1960, 750, 2000), t("12/32", 820, 70, 890, 100))
         val device = FakeDevice()
-        nav(device, Script.texts(dialog(5), dialog(5), dialog(10))).setEliteCost()
+        nav(device, Script.texts(dialog(5), dialog(5), dialog(10)), eliteCost = 15).setEliteCost()
         assertEquals(listOf(Config.ELITE_COST_PLUS), device.taps)
     }
 

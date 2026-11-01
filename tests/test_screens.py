@@ -89,8 +89,8 @@ def test_star_list(ocr, name, playable, locked):
     ("level_shop.png", LevelScreen.SHOP, (427, 2417)),
     ("level_shop_2.png", LevelScreen.SHOP, (427, 2417)),     # skill rows fall in the event bands
     ("level_lucky_wheel.png", LevelScreen.CONTINUE, (718, 2149)),
-    ("level_monk_wheel.png", LevelScreen.CONTINUE, (721, 2281)),
-    ("level_monk_done.png", LevelScreen.LEAVE, (720, 2279)),
+    ("level_monk_wheel.png", LevelScreen.MONK, (721, 2281)),
+    ("level_monk_done.png", LevelScreen.MONK, (720, 2279)),
     ("level_dice_duel.png", LevelScreen.DICE_DUEL, (1016, 2367)),  # score 0: roll
     ("level_reward_claim.png", LevelScreen.CONTINUE, (717, 2349)),
     ("level_defeat.png", LevelScreen.DEFEAT, (720, 2221)),
@@ -112,7 +112,7 @@ def test_star_list(ocr, name, playable, locked):
     ("en_level_fortune_teller.png", LevelScreen.FORTUNE_TELLER, (293, 2280)),
     ("en_level_event_result.png", LevelScreen.CONTINUE, (720, 2461)),
     ("en_level_chest.png", LevelScreen.CONTINUE, (717, 2123)),
-    ("en_level_monk_wheel.png", LevelScreen.CONTINUE, (720, 2281)),
+    ("en_level_monk_wheel.png", LevelScreen.MONK, (720, 2281)),
     ("en_level_victory_x2.png", LevelScreen.DOUBLE_REWARD, (1018, 2222)),
     ("en_level_flip_cards.png", LevelScreen.FLIP_CARDS, (299, 1280)),
     ("en_level_dice_duel.png", LevelScreen.DICE_DUEL, (1014, 2368)),

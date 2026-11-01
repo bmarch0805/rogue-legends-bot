@@ -682,7 +682,7 @@ def test_elite_cost_waits_for_the_new_cost_before_pressing_again(monkeypatch):
         return [Text("Modo Élite", 560, 600, 880, 650), Text("INICIO", 600, 1880, 840, 1930),
                 Text(f"x{cost}", 690, 1960, 750, 2000), Text("12/32", 820, 70, 890, 100)]
     frames = iter([dialog(5), dialog(5), dialog(10)])  # first read, stale frame after "+", updated
-    nav = Navigator(_TapLog(), None)
+    nav = Navigator(_TapLog(), None, elite_cost=15)  # the old "always the max" target, with energy 12 -> 10
     nav._capture = lambda: (np.zeros((2560, 1440, 3), np.uint8), next(frames))
     labels.set_language("es")
     try:
@@ -749,12 +749,24 @@ def test_scroll_to_keeps_going_until_a_far_level_is_visible(monkeypatch):
 
 
 def test_scroll_to_retries_a_drag_that_does_not_move_then_stops(monkeypatch):
+    """Stuck at the top of the list (target is not above the page): that really is the end."""
     from roguebot.navigation import SCROLL_STUCK_TRIES, LevelUnavailable
-    stuck = [_card(40, 3, 1080), _card(41, 3, 1650)]
+    stuck = [_card(1, 3, 600), _card(2, 3, 1170)]
     nav = _star_nav(monkeypatch, [stuck] * 6)
     with pytest.raises(LevelUnavailable, match="not found"):
         nav._scroll_to(8)
     assert len(nav.drags) == SCROLL_STUCK_TRIES
+
+
+def test_scroll_to_does_not_end_while_the_target_is_still_above_the_page(monkeypatch):
+    """Same frame at the high end is not "list ends at Y" when the target is still further up."""
+    from roguebot.navigation import MAX_SCROLLS, NavigationError
+    stuck = [_card(40, 3, 1080), _card(41, 3, 1650)]
+    nav = _star_nav(monkeypatch, [stuck] * (MAX_SCROLLS + 2))
+    with pytest.raises(NavigationError, match="not reached"):
+        nav._scroll_to(8)
+    assert len(nav.drags) == MAX_SCROLLS
+    assert all(delta == -config.MAX_DRAG for delta in nav.drags)
 
 
 def test_scroll_to_retries_once_when_the_list_does_not_move(monkeypatch):
@@ -803,7 +815,67 @@ def test_pause_blocks_until_resume_and_stop_still_ends_the_run():
 
 def test_version():
     import roguebot
-    assert roguebot.__version__ == "1.9.2"
+    assert roguebot.__version__ == "1.10.0"
+
+
+def test_elite_spend_uses_the_chosen_tier_or_the_next_lower_one():
+    from roguebot.navigation import elite_spend
+    assert elite_spend(5, 30) == 5  # default: more runs, not the max
+    assert elite_spend(15, 30) == 15
+    assert elite_spend(15, 12) == 10  # cannot pay 15
+    assert elite_spend(10, 7) == 5
+    assert elite_spend(5, 4) is None
+    assert elite_spend(99, 12) == 5  # unknown choice falls back to the default tier
+
+
+def test_lobby_level_title_ignores_a_side_column_number():
+    from roguebot.screens import lobby_level_title
+    start = Text("INICIO", 600, 2080, 840, 2160)
+    side = Text("38. Evento", 20, 700, 220, 760)  # center x ~120, outside the title column
+    title = Text("76. Bosque", 480, 780, 980, 860)
+    assert lobby_level_title([side, title, start], start) == "76. Bosque"
+
+
+def test_wise_monk_spins_twice_and_does_not_leave_for_hp(monkeypatch):
+    from roguebot import play
+    clock = [0.0]
+    monkeypatch.setattr(play.time, "monotonic", lambda: clock[0])
+    player = play.Player(None, None)
+    labels.set_language("es")
+    banner = Text("Monje Sabio", 400, 180, 900, 240)
+    spin = [banner, Text("GIRAR", 600, 2240, 840, 2320), Text("39% de HP", 200, 80, 400, 120)]
+    gone = [banner, Text("39% de HP", 200, 80, 400, 120)]
+    leave = [banner, Text("Salir", 600, 2240, 840, 2320), Text("39% de HP", 200, 80, 400, 120)]
+    assert player._monk_tap(spin) == (720, 2280)
+    clock[0] = 0.4
+    assert player._monk_tap(gone) is None  # the button left: that spin counts, HP is irrelevant
+    assert player._monk_spins == 1
+    assert player._monk_tap(leave) is None  # not two spins yet
+    clock[0] = 0.4 + config.MONK_LEAVE_WAIT
+    assert player._monk_tap(leave) == (720, 2280)  # the button never came back
+    labels.set_language(None)
+
+
+def test_wise_monk_second_spin_is_taken_when_the_button_returns(monkeypatch):
+    from roguebot import play
+    clock = [0.0]
+    monkeypatch.setattr(play.time, "monotonic", lambda: clock[0])
+    player = play.Player(None, None)
+    banner = Text("Wise Monk", 400, 180, 900, 240)
+    spin = [banner, Text("SPIN", 600, 2240, 840, 2320)]
+    labels.set_language("en")
+    try:
+        assert player._monk_tap(spin) == (720, 2280)
+        clock[0] = config.MONK_SPIN_SETTLE
+        assert player._monk_tap(spin) == (720, 2280)  # second spin, the button stayed
+        assert player._monk_spins == 1
+        clock[0] = config.MONK_SPIN_SETTLE * 2
+        assert player._monk_tap(spin) is None  # both spins counted; nothing else to tap
+        assert player._monk_spins == 2
+        leave = [banner, Text("Leave", 600, 2240, 840, 2320)]
+        assert player._monk_tap(leave) == (720, 2280)
+    finally:
+        labels.set_language(None)
 
 
 def test_data_dir_is_next_to_the_exe_when_frozen(monkeypatch, tmp_path):

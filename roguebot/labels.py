@@ -107,6 +107,9 @@ LEAVE = _l("salir", ("exit", "leave", "walk away"))  # exact
 CAMPFIRE_REST = _l("descansar")          # exact; campfire heart ("Restaura N% de HP"). English button not seen.
 CAMPFIRE_TRAIN = _l("entrenar")          # exact; campfire book ("Mejora 1 Habilidad Existente"). English button not seen.
 FORTUNE_TELLER = _l("adivino", "fortune teller")             # balls that may give a skill, paid with run orbs
+MONK = _l("monje sabio", "wise monk")                        # wheel banner, seen in both languages
+MONK_SPIN = _l("girar", "spin")                              # exact; second spin of that wheel. Not "girar!" (lucky wheel)
+FIGHT_SKIP = _l(en="skip")                                   # exact; green button on arena/tower fights. Spanish not seen.
 FIGHT_ROUND = _l("ronda", "round")                   # "Ronda 3/30" / "Round 4/30"
 REVIVE_PROMPT = _l("revivir ahora", "revive")        # "¡Revivir ahora!" on death, 10 s countdown (English guessed)
 REVIVE_FREE = _l("gratis", "free")                   # exact; yellow video button (the green one costs 60 gems)

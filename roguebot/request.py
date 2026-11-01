@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from roguebot import config
 from roguebot.build import Build
 from roguebot.screens import Mode
 
@@ -23,13 +24,19 @@ class RunRequest:
     mumu_folder: str = ""  # MuMu Player installation folder (started and Rogue Legend opened on Start)
     loop: bool = False    # keep running: out of energy -> wait for energy -> (routine ->) levels again
     ads: bool = False     # watch ads (energy, x2 rewards, revive, tickets); only for accounts that skip them
+    elite_cost: int = 5   # elite energy per run (5, 10 or 15); cheaper means more runs
+    skip_fights: bool = False  # paid Skip on mode fights; off, fights play out. Never the grey button.
 
 
 def build_request(mode: str, source: str, level: str, full: bool = False, build: Build = Build(),
-                  loop: bool = False, mumu_folder: str = "", ads: bool = False) -> RunRequest:
+                  loop: bool = False, mumu_folder: str = "", ads: bool = False,
+                  elite_cost: int = 5, skip_fights: bool = False) -> RunRequest:
     """Validate the form values. Raises ValueError with a user-facing message.
     Levels always run until out of energy; `loop` then waits for energy and starts again."""
-    common = dict(repeat=True, full=full, build=build, mumu_folder=mumu_folder, loop=loop, ads=ads)
+    if elite_cost not in config.ELITE_COSTS:
+        elite_cost = config.ELITE_COST_DEFAULT
+    common = dict(repeat=True, full=full, build=build, mumu_folder=mumu_folder, loop=loop, ads=ads,
+                  elite_cost=elite_cost, skip_fights=skip_fights)
     if source in (LATEST, BEATEN, PENDING):
         return RunRequest(Mode(mode), None, last_beaten=source in (BEATEN, PENDING),
                           pending_stars=source == PENDING, **common)

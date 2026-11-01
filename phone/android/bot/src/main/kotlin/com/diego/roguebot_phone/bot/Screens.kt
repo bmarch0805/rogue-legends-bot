@@ -35,8 +35,22 @@ object Screens {
             else -> { hasElite = false; Mode.NORMAL }
         }
         val start = find(texts, startLabel(mode), exact = true) ?: return null
-        val title = texts.firstOrNull { parseLevelNumber(it.text) != null }?.text
-        return Lobby(mode, title, start, starChallengeButton(texts, start), parseEnergy(texts), hasElite)
+        return Lobby(mode, lobbyLevelTitle(texts, start), start, starChallengeButton(texts, start), parseEnergy(texts), hasElite)
+    }
+
+    /** The centered "N. Name" above Start. A side label that also looks like a level must not win. */
+    fun lobbyLevelTitle(texts: List<Text>, start: Text): String? {
+        val mid = Config.SCREEN_W / 2
+        val (aboveLo, aboveHi) = Config.LOBBY_TITLE_ABOVE
+        val candidates = texts.filter {
+            parseLevelNumber(it.text) != null &&
+                kotlin.math.abs(it.center.x - mid) <= Config.LOBBY_TITLE_DX &&
+                start.center.y - it.center.y in aboveLo..aboveHi
+        }
+        if (candidates.isNotEmpty()) {
+            return candidates.minWith(compareBy({ kotlin.math.abs(it.center.x - mid) }, { it.center.y })).text
+        }
+        return texts.firstOrNull { parseLevelNumber(it.text) != null }?.text
     }
 
     /** Event tiles that share a word with Star Challenge. Never the lobby control above Start. */
@@ -341,6 +355,12 @@ object Screens {
             }
         }
         if (proceed != null && find(texts, L.LEVEL_MODIFIERS, exact = true) != null) return LevelState(LevelScreen.CONTINUE, proceed.center)
+        if (find(texts, L.MONK) != null) {  // before GIRAR/SPIN is a generic continue: the player spins twice
+            val spin = find(texts, L.MONK_SPIN, exact = true)
+            if (spin != null && spin.center.y > Config.MONK_SPIN_MIN_Y) return LevelState(LevelScreen.MONK, spin.center)
+            val leave = find(texts, L.LEAVE, exact = true)
+            return LevelState(LevelScreen.MONK, leave?.center)
+        }
         find(texts, L.EXACT_BUTTONS, exact = true)?.let { return LevelState(LevelScreen.CONTINUE, it.center) }
         for (label in L.CONTINUE_BUTTONS) find(texts, label)?.let { return LevelState(LevelScreen.CONTINUE, it.center) }
         diceDuel(texts)?.let { return LevelState(LevelScreen.DICE_DUEL, it) }
@@ -466,7 +486,7 @@ object Screens {
 enum class LevelScreen(val value: String) {
     VICTORY("victory"), DEFEAT("defeat"), DOUBLE_REWARD("double_reward"), REVIVE("revive"), SKILL_PICK("skill_pick"),
     BOARD_READY("board_ready"), AUTO_PLAY("auto_play"), FIGHT("fight"), EVENT("event"), SHOP("shop"), LEAVE("leave"),
-    FORTUNE_TELLER("fortune_teller"),
+    FORTUNE_TELLER("fortune_teller"), MONK("monk"),
     CONTINUE("continue"), DICE_DUEL("dice_duel"), FLIP_CARDS("flip_cards"), UNKNOWN("unknown")
 }
 

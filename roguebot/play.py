@@ -54,6 +54,9 @@ class Player:
         self._auto_misses = 0       # such missed holds in a row
         self._fortune_bought = []   # Fortune Teller balls bought this visit (chances)
         self._fortune_tap = None    # (chance, orbs before, time) of the last ball tap, until the orbs drop
+        self._monk_spins = 0        # Wise Monk spins finished this visit
+        self._monk_armed: float | None = None  # when the current spin was tapped
+        self._monk_leave_since: float | None = None  # Salir showed while a spin was still owed
 
     def play_level(self) -> LevelScreen:
         """Play until the level ends; returns LevelScreen.VICTORY or LevelScreen.DEFEAT."""
@@ -61,6 +64,7 @@ class Player:
         last_tap, repeats, first_repeat = None, 0, time.monotonic()
         self._state, self._rerolled, self._doubles, self._last_offer = BuildState(), False, 0, None
         self._fortune_bought, self._fortune_tap = [], None
+        self._monk_spins, self._monk_armed, self._monk_leave_since = 0, None, None
         while True:
             img = self.device.screenshot()
             texts = self.ocr.read(img)
@@ -73,8 +77,11 @@ class Player:
                 self._shop(texts)  # buys what the build wants and the coins allow; then state.tap exits
             elif state.kind is LevelScreen.FORTUNE_TELLER:
                 state = LevelState(state.kind, self._fortune(texts))
+            elif state.kind is LevelScreen.MONK:
+                state = LevelState(state.kind, self._monk_tap(texts))
             elif state.kind in (LevelScreen.BOARD_READY, LevelScreen.AUTO_PLAY):
                 self._fortune_bought = []  # back on the board: a later Fortune Teller is a new visit
+                self._monk_spins, self._monk_armed, self._monk_leave_since = 0, None, None
 
             if state.kind is LevelScreen.DOUBLE_REWARD:
                 self._doubles += 1
@@ -212,6 +219,48 @@ class Player:
                     self._fortune_tap = chance, teller.orbs, time.monotonic()
                     return teller.balls[chance]
         return config.FORTUNE_TELLER_BACK
+
+    def _monk_tap(self, texts) -> tuple[int, int] | None:
+        """Wise Monk: spin twice, then leave. HP is never a reason to stop early.
+
+        A spin counts once the button has had time to register, or once it leaves the screen.
+        Salir before both spins is ignored until the spin button fails to come back.
+        """
+        spin = find(texts, labels.MONK_SPIN, exact=True)
+        if spin is not None and spin.center[1] <= config.MONK_SPIN_MIN_Y:
+            spin = None
+        leave = find(texts, labels.LEAVE, exact=True)
+        if spin is not None and self._monk_spins < config.MONK_SPINS:
+            self._monk_leave_since = None
+            if self._monk_armed is None:
+                self._monk_armed = time.monotonic()
+                log.info("Wise Monk: spin %d/%d", self._monk_spins + 1, config.MONK_SPINS)
+                return spin.center
+            if time.monotonic() - self._monk_armed >= config.MONK_SPIN_SETTLE:
+                self._monk_spins += 1
+                self._monk_armed = None
+                log.info("Wise Monk: spin %d/%d done", self._monk_spins, config.MONK_SPINS)
+                if self._monk_spins < config.MONK_SPINS:
+                    self._monk_armed = time.monotonic()
+                    log.info("Wise Monk: spin %d/%d", self._monk_spins + 1, config.MONK_SPINS)
+                    return spin.center
+            return None  # let the spin register; don't tap it every frame
+        if self._monk_armed is not None and spin is None:
+            self._monk_spins += 1
+            self._monk_armed = None
+            log.info("Wise Monk: spin %d/%d done", self._monk_spins, config.MONK_SPINS)
+        if leave is not None and self._monk_spins >= config.MONK_SPINS:
+            return leave.center
+        if leave is not None and self._monk_spins < config.MONK_SPINS:
+            if self._monk_leave_since is None:
+                self._monk_leave_since = time.monotonic()
+            if time.monotonic() - self._monk_leave_since >= config.MONK_LEAVE_WAIT:
+                log.info("Wise Monk: spin button did not return (%d/%d); leaving",
+                         self._monk_spins, config.MONK_SPINS)
+                return leave.center
+            log.info("Wise Monk: waiting to spin again (%d/%d)", self._monk_spins, config.MONK_SPINS)
+            return None
+        return None
 
     def _ensure_double_speed(self, texts) -> bool:
         """Switch the game to x2 speed when it shows x1. Returns True if it tapped."""

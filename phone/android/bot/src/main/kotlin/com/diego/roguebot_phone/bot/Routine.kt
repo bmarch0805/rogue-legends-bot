@@ -39,6 +39,7 @@ open class Routine(
     val clock: Clock = SystemClock,
     val build: Build = Build(),       // skill picks in Dojo / raid fights follow the build, like levels
     var catalog: Catalog? = null,
+    val skipFights: Boolean = false,  // paid green Skip; off, and when the button is grey
 ) {
     var patrolWait: Double? = null  // set by patrol(): seconds until it is worth opening again
 
@@ -220,14 +221,20 @@ open class Routine(
 
     open fun daily(): String {
         if (!openMenu(L.MENU_DAILY)) return Parts.SKIPPED
-        tap(waitFor("daily rewards popup") { _, texts -> ModeScreens.dailyClaim(texts) })
         try {
-            val claim = waitFor("daily reward web page") { _, texts -> find(texts, L.DAILY_WEB_CLAIM) }
-            Log.info("Daily rewards: claiming on the web page")
-            tap(claim)
-            clock.sleep(Config.VIDEO_SETTLE)
+            tap(waitFor("daily rewards popup") { _, texts -> ModeScreens.dailyClaim(texts) })
+            try {
+                val claim = waitFor("daily reward web page") { _, texts -> find(texts, L.DAILY_WEB_CLAIM) }
+                Log.info("Daily rewards: claiming on the web page")
+                tap(claim)
+                clock.sleep(Config.VIDEO_SETTLE)
+            } catch (e: NavigationError) {
+                Log.info("Daily rewards: web claim not shown; closing the popup")
+            } finally {
+                backToGame()
+            }
         } finally {
-            backToGame()
+            closeNamedPopup(L.DAILY_TITLE)
         }
         return Parts.DONE
     }
@@ -266,7 +273,7 @@ open class Routine(
         val texts = lobbyTexts()
         val button = find(texts, L.PATROL) ?: fail("Patrol button not found in the lobby")
         tap(button)
-        var popup = waitFor("patrol popup") { _, t -> claimOr(t, ModeScreens::parsePatrol) }
+        var popup = waitFor("patrol popup", ::patrolMenu)
         patrolWait = popup.elapsed?.let { maxOf(0, Config.PATROL_CLAIM_AFTER - it).toDouble() }
         val elapsed = popup.elapsed
         if (elapsed != null && elapsed >= Config.PATROL_CLAIM_AFTER) {
@@ -274,7 +281,7 @@ open class Routine(
             tap(popup.claim)
             patrolWait = Config.PATROL_CLAIM_AFTER.toDouble()
             clock.sleep(Config.UI_SETTLE)
-            popup = waitFor("patrol popup") { _, t -> claimOr(t, ModeScreens::parsePatrol) }
+            popup = waitFor("patrol popup", ::patrolMenu)
         } else {
             Log.info("Patrol: not claiming yet (counter ${elapsed?.let { "${it / 3600}:${"%02d".format(it % 3600 / 60)}" } ?: "unreadable"})")
         }
@@ -424,14 +431,41 @@ open class Routine(
         return false
     }
 
-    /** Wait out a mode/raid fight, picking skills (Dojo, raid) by the build. Never taps "Skip" (paid VIP
-     * offer). With `nextFloor`, a tower win goes on with "Próximo piso" (when shown) instead of "Confirmar";
-     * the result's nextFloor says which one was tapped. */
+    private fun patrolMenu(img: Frame, texts: List<Text>): ModeScreens.PatrolPopup? {
+        if (ModeScreens.quickPatrolOpen(texts)) {
+            ModeScreens.quickPatrolClose(img, texts)?.let {
+                Log.info("Closing Quick Patrol")
+                device.tap(it)
+            }
+            return null
+        }
+        return claimOr(texts, ModeScreens::parsePatrol)
+    }
+
+    private fun closeNamedPopup(title: Label) {
+        repeat(6) {
+            val (img, texts) = capture()
+            if (find(texts, title) == null) return
+            val close = Screens.closeButton(img)
+            if (close != null) {
+                Log.info("Closing ${title.variants.firstOrNull() ?: "popup"}")
+                device.tap(close)
+                clock.sleep(Config.UI_SETTLE)
+            } else {
+                clock.sleep(Config.POLL_INTERVAL)
+            }
+        }
+    }
+
+    /** Wait out a mode/raid fight, picking skills (Dojo, raid) by the build. Skip is off unless the run
+     * asked for it, and then only the green button, once. The grey one opens a purchase. With `nextFloor`,
+     * a tower win goes on with "Próximo piso" (when shown) instead of "Confirmar". */
     internal fun fight(nextFloor: Boolean = false): ModeScreens.FightResult {
         val deadline = clock.now() + Config.MODE_FIGHT_TIMEOUT
         var img: Frame? = null
         val state = BuildState()  // skills taken in this fight
         var learned: List<String>? = null  // the last offer learned
+        var skipped = false
         while (clock.now() < deadline) {
             val c = capture()
             img = c.first
@@ -443,6 +477,16 @@ open class Routine(
                 // The next fight follows: never read this win again on a stale frame.
                 if (result.nextFloor != null) waitChange { ModeScreens.parseFightResult(it) == null }
                 return result
+            }
+            if (skipFights && !skipped) {
+                val button = ModeScreens.fightSkip(c.first, c.second)
+                if (button != null) {
+                    Log.info("Skipping the fight")
+                    tap(button)
+                    skipped = true
+                    clock.sleep(Config.UI_SETTLE)
+                    continue
+                }
             }
             val choice = ModeScreens.parseSkillChoice(c.second)
             if (choice == null) {

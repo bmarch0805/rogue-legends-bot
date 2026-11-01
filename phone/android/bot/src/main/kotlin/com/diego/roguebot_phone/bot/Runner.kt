@@ -17,6 +17,8 @@ data class RunRequest(
     val pendingStars: Boolean = false,
     val loop: Boolean = false,        // keep running: out of energy -> wait for energy -> (routine ->) levels again
     val ads: Boolean = false,
+    val eliteCost: Int = Config.ELITE_COST_DEFAULT,
+    val skipFights: Boolean = false,
 )
 
 const val LATEST = "latest"
@@ -27,15 +29,17 @@ const val PENDING = "pending"
 /** Validate the form values. Throws IllegalArgumentException("bad_level") (an i18n key).
  * Levels always run until out of energy; `loop` then waits for energy and starts again. */
 fun buildRequest(mode: String, source: String, level: String, full: Boolean = false,
-                 build: Build = Build(), loop: Boolean = false, ads: Boolean = false): RunRequest {
+                 build: Build = Build(), loop: Boolean = false, ads: Boolean = false,
+                 eliteCost: Int = Config.ELITE_COST_DEFAULT, skipFights: Boolean = false): RunRequest {
     val m = Mode.values().first { it.value == mode }
+    val cost = if (eliteCost in Config.ELITE_COSTS) eliteCost else Config.ELITE_COST_DEFAULT
     if (source == LATEST || source == BEATEN || source == PENDING) {
         return RunRequest(m, null, true, full, build, lastBeaten = source == BEATEN || source == PENDING,
-            pendingStars = source == PENDING, loop = loop, ads = ads)
+            pendingStars = source == PENDING, loop = loop, ads = ads, eliteCost = cost, skipFights = skipFights)
     }
     val n = level.trim().toIntOrNull()
     if (n == null || n < 1 || !level.trim().isDigits()) throw IllegalArgumentException("bad_level")
-    return RunRequest(m, n, true, full, build, loop = loop, ads = ads)
+    return RunRequest(m, n, true, full, build, loop = loop, ads = ads, eliteCost = cost, skipFights = skipFights)
 }
 
 data class Report(
@@ -55,7 +59,13 @@ val PERMANENT_ERRORS = setOf("err_game_update", "err_game_missing", "err_service
 fun levelInProgress(img: Frame, texts: List<Text>): Boolean = Screens.classifyLevelScreen(img, texts).kind in setOf(
     LevelScreen.BOARD_READY, LevelScreen.AUTO_PLAY, LevelScreen.FIGHT, LevelScreen.SKILL_PICK, LevelScreen.SHOP,
     LevelScreen.EVENT, LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.VICTORY,
-    LevelScreen.DEFEAT, LevelScreen.DOUBLE_REWARD, LevelScreen.FORTUNE_TELLER) && !Screens.lobbyBehind(texts)
+    LevelScreen.DEFEAT, LevelScreen.DOUBLE_REWARD, LevelScreen.FORTUNE_TELLER, LevelScreen.MONK) && !Screens.lobbyBehind(texts)
+
+/** Level to keep replaying after winning the last unlocked one. A stale low read is corrected from the lobby. */
+fun pinLevel(played: Int?, unlocked: Int?): Int? {
+    if (unlocked != null && unlocked >= 2 && (played == null || unlocked > played + 1)) return unlocked - 1
+    return played
+}
 
 /** Errors that differ only in numbers or screenshot paths count as the same error. */
 fun errorKey(e: Throwable): String =
@@ -160,7 +170,7 @@ class Runner(
     /** One try: the game in front, then the requested work. `state` keeps results across tries. */
     private fun attempt(state: State): Report {
         var request = state.request
-        val nav = Navigator(device, ocr, dryRun, request.ads, clock, debug)
+        val nav = Navigator(device, ocr, dryRun, request.ads, clock, debug, request.eliteCost)
         val playLevel = { Player(device, ocr, request.build, catalog, request.ads, clock, debug).playLevel() }
         nav.resumeLevel = { playLevel().also { state.resumed++ } }
         var opened = false
@@ -189,7 +199,8 @@ class Runner(
         while (true) {
             cycle++
             if (request.full && !state.routineDone) {
-                val routine = Routine(device, ocr, nav, request.ads, playLevel, clock, request.build, catalog)
+                val routine = Routine(device, ocr, nav, request.ads, playLevel, clock, request.build, catalog,
+                    skipFights = request.skipFights)
                 routine.runParts(state.progress)
                 // just opened by the routine: not again before the first level
                 routine.patrolWait?.let { state.patrolNext = patrolNext(it, wall()) }
@@ -211,11 +222,14 @@ class Runner(
                     nav.startLatest(request.mode)
                 }
                 results.add(Player(device, ocr, request.build, catalog, request.ads, clock, debug).playLevel())
-                if (request.level == null && !request.lastBeaten && results.last() == LevelScreen.VICTORY && played != null && !state.noStars) {
-                    request = request.copy(level = played)  // keep replaying this one from Desafío de Estrellas
-                    state.request = request
+                val lobby = nav.goToLobby()
+                if (request.level == null && !request.lastBeaten && results.last() == LevelScreen.VICTORY && !state.noStars) {
+                    val pinned = pinLevel(played, parseLevelNumber(lobby.levelTitle ?: ""))
+                    if (pinned != null) {
+                        request = request.copy(level = pinned)  // keep replaying the level just played
+                        state.request = request
+                    }
                 }
-                nav.goToLobby()
                 Log.info("Level finished: ${results.last().value} (run ${results.size})")
                 if (!request.repeat) return Report(results.toList())
             }

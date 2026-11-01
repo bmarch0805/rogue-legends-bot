@@ -20,6 +20,7 @@ from roguebot.report import Report
 from roguebot.request import RunRequest
 from roguebot.routine import Routine
 from roguebot.screens import LevelScreen
+from roguebot.vision import parse_level_number
 from roguebot.skills import Catalog
 from roguebot.vision import Ocr
 
@@ -27,6 +28,19 @@ log = logging.getLogger("roguebot")
 ENERGY_READS = 3
 LOG_FILE_BYTES = 5_000_000
 PATROL_FAILS_TO_BACK_OFF = 2  # after-level patrol failures in a row before trying it only hours later
+
+def pin_level(played: int | None, unlocked: int | None) -> int | None:
+    """Level to keep replaying after winning the last unlocked one.
+
+    A win moves the lobby title up by one, so the level just played is ``unlocked - 1``.
+    Use that when it is higher than ``played``: the title read at the start can be a stale
+    low number (38) while the lobby is on ~76. A correct read (the lobby is exactly
+    ``played + 1``) stays ``played``.
+    """
+    if unlocked is not None and unlocked >= 2 and (played is None or unlocked > played + 1):
+        return unlocked - 1
+    return played
+
 
 def _start_level(nav: Navigator, request: RunRequest) -> int | None:
     """Start the requested level; returns its number when known."""
@@ -118,7 +132,7 @@ def make_runner(dry_run: bool, stop: threading.Event | None = None,
         device = Device(serial, stop=stop, adb=adb, pause=pause)
         ocr = ocr or Ocr()
         catalog = catalog or Catalog()
-        nav = Navigator(device, ocr, dry_run=dry_run, ads=request.ads)
+        nav = Navigator(device, ocr, dry_run=dry_run, ads=request.ads, elite_cost=request.elite_cost)
         play_level = lambda: Player(device, ocr, request.build, catalog, request.ads).play_level()
 
         def resume_level():  # an interrupted run (its energy is spent): play it out; progress for run()
@@ -140,7 +154,8 @@ def make_runner(dry_run: bool, stop: threading.Event | None = None,
         while True:
             cycle += 1
             if request.full and not state["routine_done"]:  # a retry after an error resumes at the part that broke
-                routine = Routine(device, ocr, nav, request.ads, play_level, request.build, catalog)
+                routine = Routine(device, ocr, nav, request.ads, play_level, request.build, catalog,
+                                  skip_fights=request.skip_fights)
                 routine.run_parts(state)
                 if routine.patrol_wait is not None:  # just opened by the routine: not again before the first level
                     state["patrol_next"] = _patrol_next(routine.patrol_wait, time.time())
@@ -160,11 +175,15 @@ def make_runner(dry_run: bool, stop: threading.Event | None = None,
                     request = state["request"] = replace(request, level=None, last_beaten=False, pending_stars=False)
                     played = nav.start_latest(request.mode)
                 results.append(Player(device, ocr, request.build, catalog, request.ads).play_level())
+                lobby = nav.go_to_lobby()
                 if (request.level is None and not request.last_beaten and results[-1] is LevelScreen.VICTORY
-                        and played is not None and not state.get("no_stars")):
+                        and not state.get("no_stars")):
                     # Winning unlocked the next level; keep replaying this one from Desafío de Estrellas.
-                    request = state["request"] = replace(request, level=played)
-                nav.go_to_lobby()
+                    # The number is the level just played, corrected from the lobby title when the
+                    # start read was a stale low number.
+                    pinned = pin_level(played, parse_level_number(lobby.level_title or ""))
+                    if pinned is not None:
+                        request = state["request"] = replace(request, level=pinned)
                 log.info("Level finished: %s (run %d)", results[-1].value, len(results))
                 if not request.repeat:
                     return Report(results)

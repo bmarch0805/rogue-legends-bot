@@ -9,13 +9,13 @@ It plays in Spanish or English.
 
 ## What it does
 
-- **Levels:** normal or elite (elite cost 5/10/15 from the energy you have). The level can be:
+- **Levels:** normal or elite (elite energy 5, 10 or 15; default 5, or the next lower cost the energy can pay). The level can be:
   - the last unlocked level;
   - the last beaten level;
   - a level that still misses stars (star rewards include diamonds);
   - any beaten level N from Desafío de Estrellas.
-- **Build:** picks level skills and shop items by your preferences: physical or magic damage, the
-  order of the damage types, and a support skill every N damage skills. Every new skill is saved in
+- **Build:** named presets (Shuriken, Fire, Poison, Ice, Lightning, Sustain) or your own order.
+  Shops buy only skills the build wants. Every new skill is saved in
   `data/skills.json` with inferred tags, which you can edit.
 - **Full routine:**
   - VIP cards "claim all";

@@ -50,10 +50,15 @@ object Config {
     // Elite start dialog
     val STAR_ICONS_X = listOf(1245, 1312, 1379)
     val ELITE_COSTS = listOf(5, 10, 15)
+    val ELITE_COST_DEFAULT = ELITE_COSTS.first()
     val ELITE_COST_MINUS = P(480, 1747)
     val ELITE_COST_PLUS = P(960, 1747)
     val ELITE_DIALOG_CLOSE = P(720, 2027)
     const val COST_BELOW_START_MAX = 120
+
+    // Lobby level title is centered above Start. Side-column "N. Name" labels are further out.
+    const val LOBBY_TITLE_DX = 420
+    val LOBBY_TITLE_ABOVE = 250 to 1600
 
     // Star challenge list geometry
     const val LIST_TOP = 290
@@ -89,6 +94,12 @@ object Config {
     const val CAMPFIRE_HEAL_BELOW = 0.40
     val FLIP_CARDS = listOf(1280, 1560, 1840).flatMap { y -> listOf(299, 579, 859, 1139).map { x -> P(x, y) } }
     const val FLIP_FACE_DOWN_MIN_FRACTION = 0.25
+    const val MONK_SPINS = 2
+    const val MONK_SPIN_MIN_Y = 2000
+    const val MONK_SPIN_SETTLE = 1.2
+    const val MONK_LEAVE_WAIT = 4.0
+    const val FIGHT_SKIP_MIN_Y = 2200
+    const val SKIP_LIME_MIN_FRACTION = 0.35
     val FORTUNE_TELLER_BACK = P(293, 2280)
     val FORTUNE_ORBS_REGION = Region(680, 2200, 880, 2360)
     const val FORTUNE_BUTTON_BELOW_TAG = 583

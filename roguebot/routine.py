@@ -9,9 +9,10 @@ from typing import Callable
 from roguebot import config, labels as L
 from roguebot.build import Build, BuildState, shop_order
 from roguebot.device import Device
-from roguebot.mode_screens import (FightResult, back_arrow, daily_claim, free_donation, parse_patrol, parse_quick_patrol, guild_hall, guild_hall_donate, in_guild, is_modes_list, mail_claim_all, menu_entry, mode_closed, mode_entry, parse_arena, parse_arena_opponents,
+from roguebot.mode_screens import (FightResult, back_arrow, daily_claim, fight_skip, free_donation, parse_patrol, parse_quick_patrol, guild_hall, guild_hall_donate, in_guild, is_modes_list, mail_claim_all, menu_entry, mode_closed, mode_entry, parse_arena, parse_arena_opponents,
                                    parse_dive, parse_dojo, parse_dungeon_popup, parse_fight_result, parse_raid,
-                                   parse_skill_choice, parse_tower, pick_opponent, vip_cards_icon, vip_claim_all)
+                                   parse_skill_choice, parse_tower, pick_opponent, quick_patrol_close, quick_patrol_open,
+                                   vip_cards_icon, vip_claim_all)
 from roguebot.navigation import NavigationError, Navigator, _still_there
 from roguebot.play import PlayError
 from roguebot.screens import close_button, parse_energy, parse_lobby, parse_skill_cards, popup_close, rarity_name
@@ -39,11 +40,12 @@ class StuckError(NavigationError):
 class Routine:
     def __init__(self, device: Device, ocr: Ocr, nav: Navigator, ads: bool = False,
                  play_level: Callable[[], object] | None = None, build: Build = Build(),
-                 catalog: Catalog | None = None):
+                 catalog: Catalog | None = None, skip_fights: bool = False):
         self.play_level = play_level  # plays a level board to its end (Player.play_level): Dungeon Dive runs
         self.build = build            # skill picks in Dojo / raid fights follow the build, like levels
         self.catalog = catalog
         self.ads = ads  # watch ads (dungeon tickets, quick patrol); only with an account that skips them
+        self.skip_fights = skip_fights  # paid green Skip on mode fights; off, and when the button is grey
         self.device = device
         self.ocr = ocr
         self.nav = nav
@@ -175,7 +177,8 @@ class Routine:
 
     def dojo(self) -> str:
         """Dojo Battle: fight the training dummy (most damage wins rank) while there are tickets; skills by
-        rarity, like the raid. Also claims the free progress chest ("Intenta el Dojo N veces")."""
+        rarity, like the raid. Also claims the free progress chest ("Intenta el Dojo N veces")
+        whenever its label is on screen, including while tickets remain (no red-dot required)."""
         if not self._open_mode(L.DOJO):
             log.info("Dojo: closed for now")
             return SKIPPED
@@ -214,17 +217,26 @@ class Routine:
     def daily(self) -> str:
         """Lobby ≡ menu → "Recompensas Diarias" → "Reclamar": the game opens its web store in a browser,
         where only "Reclamar ahora!" is tapped (the store sells things); then Back to the game. The
-        reward arrives by mail (the mail part comes next)."""
+        reward arrives by mail (the mail part comes next).
+
+        The popup is closed (its ✕) before this returns, including when the browser never opens.
+        Leaving it up puts the mail part on the wrong window and the run restarts in a loop.
+        """
         if not self._open_menu(L.MENU_DAILY):
             return SKIPPED
-        self._tap(self._wait_for(lambda img, texts: daily_claim(texts), "daily rewards popup"))
         try:
-            claim = self._wait_for(lambda img, texts: find(texts, L.DAILY_WEB_CLAIM), "daily reward web page")
-            log.info("Daily rewards: claiming on the web page")
-            self._tap(claim)
-            time.sleep(config.VIDEO_SETTLE)  # the page loads the store with the claimed day
+            self._tap(self._wait_for(lambda img, texts: daily_claim(texts), "daily rewards popup"))
+            try:
+                claim = self._wait_for(lambda img, texts: find(texts, L.DAILY_WEB_CLAIM), "daily reward web page")
+                log.info("Daily rewards: claiming on the web page")
+                self._tap(claim)
+                time.sleep(config.VIDEO_SETTLE)  # the page loads the store with the claimed day
+            except NavigationError:
+                log.info("Daily rewards: web claim not shown; closing the popup")
+            finally:
+                self._back_to_game()
         finally:
-            self._back_to_game()
+            self._close_named_popup(L.DAILY_TITLE)
         return DONE
 
     def mail(self) -> str:
@@ -265,7 +277,7 @@ class Routine:
         if not button:
             self._fail("Patrol button not found in the lobby")
         self._tap(button)
-        popup = self._wait_for(lambda img, texts: self._claim_or(texts, parse_patrol), "patrol popup")
+        popup = self._wait_for(self._patrol_menu, "patrol popup")
         # Seconds until the reward is worth claiming (None: unknown). Quick patrols are used up below.
         self.patrol_wait = None if popup.elapsed is None else max(0, config.PATROL_CLAIM_AFTER - popup.elapsed)
         if popup.elapsed is not None and popup.elapsed >= config.PATROL_CLAIM_AFTER:
@@ -273,7 +285,7 @@ class Routine:
             self._tap(popup.claim)
             self.patrol_wait = config.PATROL_CLAIM_AFTER  # the counter starts again from 0
             time.sleep(config.UI_SETTLE)
-            popup = self._wait_for(lambda img, texts: self._claim_or(texts, parse_patrol), "patrol popup")
+            popup = self._wait_for(self._patrol_menu, "patrol popup")
         else:
             log.info("Patrol: not claiming yet (counter %s)",
                      "unreadable" if popup.elapsed is None else f"{popup.elapsed // 3600}:{popup.elapsed % 3600 // 60:02d}")
@@ -407,12 +419,41 @@ class Routine:
         log.info("Could not get back to the modes list")
         return False
 
+    def _patrol_menu(self, img, texts: list[Text]):
+        """The patrol menu. A Quick Patrol sheet on top is closed by its bright ✕ first, so the
+        green Reclamar of the timed reward can be read (the sheet used to be the only thing checked)."""
+        if quick_patrol_open(texts):
+            close = quick_patrol_close(img, texts)
+            if close:
+                log.info("Closing Quick Patrol")
+                self.device.tap(*close)
+            return None
+        return self._claim_or(texts, parse_patrol)
+
+    def _close_named_popup(self, title: L.Label) -> None:
+        """Tap the ✕ while this popup's title is still on screen. A few tries, then give up."""
+        for _ in range(6):
+            img, texts = self._capture()
+            if find(texts, title) is None:
+                return
+            close = close_button(img)
+            if close:
+                log.info("Closing %s", title.variants[0] if title.variants else "popup")
+                self.device.tap(*close)
+                time.sleep(config.UI_SETTLE)
+            else:
+                time.sleep(config.POLL_INTERVAL)
+
     def _fight(self, next_floor: bool = False) -> FightResult:
-        """Wait out a mode/raid fight, picking skills (Dojo, raid) by the build when asked. Never taps
-        "Skip": it opens a paid VIP offer. With `next_floor`, a tower win goes on with "Próximo piso"
-        (when shown) instead of "Confirmar"; the result's next_floor says which one was tapped."""
+        """Wait out a mode/raid fight, picking skills (Dojo, raid) by the build when asked.
+
+        Skip is off unless the run asked for it. Even then only the green Skip is tapped, once,
+        and the fight is then allowed to finish: the grey button opens a paid offer, and tapping
+        Skip on every frame races the result. With `next_floor`, a tower win goes on with
+        "Próximo piso" (when shown) instead of "Confirmar"."""
         deadline = time.monotonic() + config.MODE_FIGHT_TIMEOUT
         state, learned = BuildState(), None  # skills taken in this fight; the last offer learned
+        skipped = False
         while time.monotonic() < deadline:
             img, texts = self._capture()
             result = parse_fight_result(texts)
@@ -424,6 +465,14 @@ class Routine:
                 if result.next_floor:  # the next fight follows: never read this win again on a stale frame
                     self._wait_change(lambda t: parse_fight_result(t) is None)
                 return result
+            if self.skip_fights and not skipped:
+                button = fight_skip(img, texts)
+                if button:
+                    log.info("Skipping the fight")
+                    self._tap(button)
+                    skipped = True
+                    time.sleep(config.UI_SETTLE)  # one tap, then let the result show
+                    continue
             choice = parse_skill_choice(texts)
             if not choice:
                 time.sleep(config.POLL_INTERVAL)

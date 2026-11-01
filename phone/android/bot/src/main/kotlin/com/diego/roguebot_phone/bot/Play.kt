@@ -35,6 +35,9 @@ class Player(
     private var autoMisses = 0    // such missed holds in a row
     private var fortuneBought = ArrayList<Int>()  // Fortune Teller balls bought this visit (chances)
     private var fortuneTap: Triple<Int, Int, Double>? = null  // (chance, orbs before, time) of the last ball tap
+    private var monkSpins = 0
+    private var monkArmed: Double? = null
+    private var monkLeaveSince: Double? = null
 
     /** Play until the level ends; returns VICTORY or DEFEAT. */
     fun playLevel(): LevelScreen {
@@ -44,6 +47,7 @@ class Player(
         var firstRepeat = clock.now()
         state = BuildState(); rerolled = false; doubles = 0; lastOffer = null
         fortuneBought = ArrayList(); fortuneTap = null
+        monkSpins = 0; monkArmed = null; monkLeaveSince = null
         while (true) {
             val img = device.screenshot()
             val texts = ocr.read(img)
@@ -55,8 +59,11 @@ class Player(
                 shop(texts)
             } else if (s.kind == LevelScreen.FORTUNE_TELLER) {
                 s = LevelState(s.kind, fortune(texts))
+            } else if (s.kind == LevelScreen.MONK) {
+                s = LevelState(s.kind, monkTap(texts))
             } else if (s.kind == LevelScreen.BOARD_READY || s.kind == LevelScreen.AUTO_PLAY) {
                 fortuneBought.clear()  // back on the board: a later Fortune Teller is a new visit
+                monkSpins = 0; monkArmed = null; monkLeaveSince = null
             }
 
             if (s.kind == LevelScreen.DOUBLE_REWARD) {
@@ -171,6 +178,49 @@ class Player(
             }
         }
         return Config.FORTUNE_TELLER_BACK
+    }
+
+    /** Wise Monk: spin twice, then leave. HP is never a reason to stop early. */
+    private fun monkTap(texts: List<Text>): P? {
+        var spin = find(texts, L.MONK_SPIN, exact = true)
+        if (spin != null && spin.center.y <= Config.MONK_SPIN_MIN_Y) spin = null
+        val leave = find(texts, L.LEAVE, exact = true)
+        if (spin != null && monkSpins < Config.MONK_SPINS) {
+            monkLeaveSince = null
+            val armed = monkArmed
+            if (armed == null) {
+                monkArmed = clock.now()
+                Log.info("Wise Monk: spin ${monkSpins + 1}/${Config.MONK_SPINS}")
+                return spin.center
+            }
+            if (clock.now() - armed >= Config.MONK_SPIN_SETTLE) {
+                monkSpins += 1
+                monkArmed = null
+                Log.info("Wise Monk: spin $monkSpins/${Config.MONK_SPINS} done")
+                if (monkSpins < Config.MONK_SPINS) {
+                    monkArmed = clock.now()
+                    Log.info("Wise Monk: spin ${monkSpins + 1}/${Config.MONK_SPINS}")
+                    return spin.center
+                }
+            }
+            return null
+        }
+        if (monkArmed != null && spin == null) {
+            monkSpins += 1
+            monkArmed = null
+            Log.info("Wise Monk: spin $monkSpins/${Config.MONK_SPINS} done")
+        }
+        if (leave != null && monkSpins >= Config.MONK_SPINS) return leave.center
+        if (leave != null && monkSpins < Config.MONK_SPINS) {
+            if (monkLeaveSince == null) monkLeaveSince = clock.now()
+            if (clock.now() - monkLeaveSince!! >= Config.MONK_LEAVE_WAIT) {
+                Log.info("Wise Monk: spin button did not return ($monkSpins/${Config.MONK_SPINS}); leaving")
+                return leave.center
+            }
+            Log.info("Wise Monk: waiting to spin again ($monkSpins/${Config.MONK_SPINS})")
+            return null
+        }
+        return null
     }
 
     /** Free reroll if nothing is wanted, then buy in the build's order whatever the coins allow. */
