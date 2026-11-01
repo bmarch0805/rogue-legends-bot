@@ -55,3 +55,5 @@ See `CLAUDE.md` for how it works inside: architecture, game knowledge, and every
 ## 1.10.0 Known Issues
 
 1. Hangs on Monk Spin when claiming skill
+2. Shop logic won't use low amount of coins to refresh, it will be added in the next update.
+3. "Last Unlocked" behavior will be upgraded to continue running the most recent unlock, not rerun the last beaten one until a loss occurs. 
