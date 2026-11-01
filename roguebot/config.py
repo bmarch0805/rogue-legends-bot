@@ -55,11 +55,17 @@ MIN_RUN_ENERGY = 5           # cheapest run (normal, or elite at x5)
 
 # Elite start dialog ("Modo Élite")
 STAR_ICONS_X = (1245, 1312, 1379)  # the 3 star icons right of a star list card header (gold = earned)
-ELITE_COSTS = (5, 10, 15)    # energy per run; the bot uses the highest affordable one
+ELITE_COSTS = (5, 10, 15)    # energy per run; the window picks one (default the cheapest: more runs)
+ELITE_COST_DEFAULT = ELITE_COSTS[0]
 ELITE_COST_MINUS = (480, 1747)
 ELITE_COST_PLUS = (960, 1747)
 ELITE_DIALOG_CLOSE = (720, 2027)
 COST_BELOW_START_MAX = 120   # "X5" label sits just below the dialog's INICIO
+
+# Lobby level title ("13. Bosque Embrujado II"): centered, above Start. Side-column
+# labels that also look like "N. Name" are further out and must not be pinned.
+LOBBY_TITLE_DX = 420
+LOBBY_TITLE_ABOVE = (250, 1600)
 
 # Star challenge list geometry
 LIST_TOP = 290               # below the "Desafio de Estrella" banner
@@ -95,6 +101,12 @@ EVENT_DISABLED_MAX_SATURATION = 70       # mean HSV saturation of a greyed (disa
 CAMPFIRE_HEAL_BELOW = 0.40               # "Un Momento de Descanso": restore HP only under this fraction of max HP
 FLIP_CARDS = [(x, y) for y in (1280, 1560, 1840) for x in (299, 579, 859, 1139)]  # 4x3 grid centers
 FLIP_FACE_DOWN_MIN_FRACTION = 0.25       # measured: 0.39 face down, 0.08 face up
+MONK_SPINS = 2               # Wise Monk / Monje Sabio: always spin twice, then leave
+MONK_SPIN_MIN_Y = 2000       # the GIRAR/SPIN button; speech text higher up is not it
+MONK_SPIN_SETTLE = 1.2       # seconds a spin tap is given before it counts (don't machine-gun)
+MONK_LEAVE_WAIT = 4.0        # Salir while a spin is still owed: wait for GIRAR to come back
+FIGHT_SKIP_MIN_Y = 2200      # green Skip sits on the fight's bottom bar; "Skip" in a VIP offer is higher
+SKIP_LIME_MIN_FRACTION = 0.35  # enabled Skip is lime; the grey one opens a purchase
 FORTUNE_TELLER_BACK = (293, 2280)        # back arrow, bottom-left
 FORTUNE_ORBS_REGION = (680, 2200, 880, 2360)  # run orbs counter, bottom center
 FORTUNE_BUTTON_BELOW_TAG = 583           # a ball's buy button ("x1"/"x2", OCR garbles it) below its "70%" tag

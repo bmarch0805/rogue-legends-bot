@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.0 (2026-11-01)
+- Star Challenge keeps scrolling up when the list is stuck on a high page. The same frame no longer counts as the end of the list while the target level is still above the lowest card on screen (that used to stop the run with "Level X not found (list ends at Y)").
+- Last unlocked: after a win, the level that gets replayed is the one just played. A stale low number (38 while the lobby is on ~76) is corrected from the lobby title.
+- Elite energy is a choice of 5, 10 or 15 (default 5, so more runs). The bot spends that much when the counter can pay it, otherwise the next lower cost. It no longer always picks the highest affordable.
+- Daily rewards: if the web claim never opens, the popup is closed (its ✕) so mail is not left on the wrong window.
+- Patrol: a Quick Patrol sheet that is already open is closed first, then the timed reward (green Reclamar, from 2 hours) is claimed. A clock OCR put on the next line still counts.
+- Dojo: the progress chest is claimed when its label is on screen, including while tickets remain.
+- Skip fights is off by default. When it is on, a green Skip on a mode fight is tapped once. The grey Skip (it opens a purchase) is never tapped.
+- Wise Monk spins twice, then leaves. It does not leave early because of HP.
+- Build presets: Shuriken (shuriken, bleed, venom; never Deadly Stars), Fire (fire only), Poison (venom, bleed, shuriken), Ice, Lightning and Sustain. Shops still buy only wanted skills. A skill already taken this run is preferred over a new one of the same type. Glass Cannon and Darkside are not taken on farm builds.
+
 ## 1.9.2 (2026-10-31)
 - Campfire ("Un Momento de Descanso"): the bot upgrades a skill. It restores HP only when the top-bar heart line is under 40%. If that line cannot be read, it still upgrades (the "39% de HP" under Descansar is the heal amount, not the current HP).
 - Shops buy skills of the build only (your damage-type order, then rarity). They no longer spend leftover coins on other cards. A level-up with no named damage type uses the reroll before taking an untyped skill. A damage type written on the card (shuriken, venom, …) wins over a stale saved tag.

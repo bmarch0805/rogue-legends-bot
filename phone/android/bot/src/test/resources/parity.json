@@ -12016,7 +12016,7 @@
 "parse_energy_popup": null,
 "update_required": false,
 "resume_prompt": null,
-"on_board": false,
+"on_board": true,
 "is_loading": false,
 "close_button": null,
 "tutorial_hand": null,
@@ -12025,7 +12025,7 @@
 "lobby_behind": false,
 "outside_tap_clear": null,
 "classify_level_screen": {
-"kind": "continue",
+"kind": "monk",
 "tap": [
 720,
 2281
@@ -29168,7 +29168,7 @@
 "parse_energy_popup": null,
 "update_required": false,
 "resume_prompt": null,
-"on_board": false,
+"on_board": true,
 "is_loading": false,
 "close_button": null,
 "tutorial_hand": null,
@@ -29177,7 +29177,7 @@
 "lobby_behind": false,
 "outside_tap_clear": null,
 "classify_level_screen": {
-"kind": "leave",
+"kind": "monk",
 "tap": [
 720,
 2279
@@ -29278,7 +29278,7 @@
 "parse_energy_popup": null,
 "update_required": false,
 "resume_prompt": null,
-"on_board": false,
+"on_board": true,
 "is_loading": false,
 "close_button": null,
 "tutorial_hand": null,
@@ -29287,7 +29287,7 @@
 "lobby_behind": false,
 "outside_tap_clear": null,
 "classify_level_screen": {
-"kind": "continue",
+"kind": "monk",
 "tap": [
 721,
 2281

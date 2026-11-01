@@ -419,6 +419,49 @@ def test_dojo_fights_while_there_are_tickets_and_claims_the_chest(monkeypatch):
     assert r.device.taps == [challenge, confirm, challenge, confirm, chest, (720, 2320)]
 
 
+def test_dojo_claims_the_chest_while_a_ticket_remains(monkeypatch):
+    """The chest label is enough. A missing red dot on the modes button does not matter."""
+    labels.set_language("es")
+    monkeypatch.setattr(routine, "parse_dojo", fake_dojo)
+    monkeypatch.setattr(routine.config, "UI_SETTLE", 0)
+    victory = [Text("VICTORIA", 600, 1000, 830, 1055), Text("Confirmar", 534, 2280, 905, 2367)]
+    r = make([dojo(1, chest=True), CLAIM_ES, dojo(1), LOADING, victory, dojo(0)])
+    monkeypatch.setattr(r, "_open_mode", lambda label: True)
+    assert r.dojo() == routine.DONE
+    assert r.device.taps[0] == (388, 2148)  # chest before the remaining ticket is spent
+
+
+def test_patrol_closes_quick_patrol_before_the_timed_claim(monkeypatch):
+    labels.set_language("es")
+    monkeypatch.setattr(routine.config, "UI_SETTLE", 0)
+    monkeypatch.setattr(routine, "parse_quick_patrol", _fake_quick)
+    sheet = [Text("Reclama de inmediato las recompensas de 2 h:", 330, 920, 1110, 965)]
+    monkeypatch.setattr(routine, "quick_patrol_close",
+                        lambda img, texts: (720, 1810) if any("inmediato" in t.text for t in texts) else None)
+    r = make([PATROL_LOBBY, sheet, PATROL, CLAIM_ES, PATROL, quick(0, 0)])
+    assert r.patrol() == routine.DONE
+    assert r.device.taps[:3] == [(720, 1922), (720, 1810), (945, 1775)]  # open, close sheet, Reclamar
+
+
+def test_skip_fights_taps_a_green_skip_once_and_stays_off_by_default(monkeypatch):
+    labels.set_language("en")
+    monkeypatch.setattr(routine.config, "UI_SETTLE", 0)
+    fight = [Text("Round: 1/10", 600, 170, 840, 210), Text("Skip", 800, 2380, 1000, 2460)]
+    result = [Text("VICTORY!", 600, 1060, 840, 1110), Text("OK", 680, 2090, 760, 2140)]
+    skip = fight[1]
+
+    def green(img, texts):
+        return skip if any(t.text == "Skip" for t in texts) else None
+
+    monkeypatch.setattr(routine, "fight_skip", green)
+    off = make([fight, result])
+    assert off._fight().victory and off.device.taps == [(720, 2115)]  # default: the fight plays out
+    on = make([fight, fight, result])
+    on.skip_fights = True
+    assert on._fight().victory
+    assert on.device.taps == [(900, 2420), (720, 2115)]  # Skip once, then the result
+
+
 def test_dojo_without_tickets_taps_nothing(monkeypatch):
     labels.set_language("es")
     monkeypatch.setattr(routine, "parse_dojo", fake_dojo)
@@ -454,7 +497,7 @@ WEB_PAGE = [Text("roguelegend.io", 220, 130, 390, 170), Text("TIENDA", 780, 310,
 def test_daily_rewards_claims_on_the_web_page_and_goes_back_to_the_game(monkeypatch):
     labels.set_language("es")
     monkeypatch.setattr(routine.config, "VIDEO_SETTLE", 0)
-    r = make([ES_LOBBY, ES_MENU, DAILY_POPUP, WEB_PAGE])
+    r = make([ES_LOBBY, ES_MENU, DAILY_POPUP, WEB_PAGE, WEB_PAGE])  # last frame: popup already gone
     r.device.apps = ["com.android.chromium", "com.android.chromium"]  # Back twice: page history, then the game
     assert r.daily() == routine.DONE
     assert r.device.taps == [routine.config.MENU_BUTTON, (397, 1084), (696, 1178), (989, 1415)]
@@ -462,15 +505,26 @@ def test_daily_rewards_claims_on_the_web_page_and_goes_back_to_the_game(monkeypa
 
 
 def test_daily_rewards_goes_back_to_the_game_even_without_the_web_claim(monkeypatch):
-    """Another account may not be logged in on the web store: no "Reclamar ahora!"."""
+    """Another account may not be logged in on the web store: no "Reclamar ahora!". The lobby is left clean."""
     labels.set_language("es")
     monkeypatch.setattr(routine, "SCREEN_TIMEOUT", 0.05)
     login = [Text("roguelegend.io", 220, 130, 390, 170), Text("Iniciar sesión", 500, 1200, 900, 1260)]
     r = make(itertools.chain([ES_LOBBY, ES_MENU, DAILY_POPUP], itertools.repeat(login)))
     r.device.apps = ["com.android.chromium"]
-    with pytest.raises(NavigationError):
-        r.daily()
+    assert r.daily() == routine.DONE
     assert r.device.backs == 1 and (989, 1415) not in r.device.taps
+
+
+def test_daily_rewards_closes_the_popup_when_the_browser_never_opens(monkeypatch):
+    """The claim window used to stay up, so mail started on the wrong screen and the run restarted."""
+    labels.set_language("es")
+    monkeypatch.setattr(routine, "SCREEN_TIMEOUT", 0.05)
+    monkeypatch.setattr(routine.config, "UI_SETTLE", 0)
+    monkeypatch.setattr(routine, "close_button", lambda img: (720, 1500))
+    r = make(itertools.chain([ES_LOBBY, ES_MENU, DAILY_POPUP], itertools.repeat(DAILY_POPUP)))
+    assert r.daily() == routine.DONE
+    assert r.device.taps.count((720, 1500)) >= 1
+    assert (989, 1415) not in r.device.taps
 
 
 def test_menu_entry_missing_skips_the_part(monkeypatch):

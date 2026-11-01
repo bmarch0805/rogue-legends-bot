@@ -15,7 +15,11 @@ Rules (from the user):
 
 from dataclasses import dataclass, field
 
-from roguebot.skills import DAMAGE, DAMAGE_TYPES, PHYSICAL, RARITY_NAMES, SUPPORT, Skill
+from roguebot.skills import DAMAGE, DAMAGE_TYPES, MAGIC, PHYSICAL, RARITY_NAMES, SUPPORT, Skill, skill_key
+from roguebot.vision import normalize
+
+# Farm builds never prefer these. Deadly Stars is only refused on the shuriken preset.
+FARM_AVOID = ("glass cannon", "darkside", "dark side")
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,20 @@ class Build:
     nature: str = PHYSICAL                          # PHYSICAL / MAGIC
     order: tuple[str, ...] = DAMAGE_TYPES           # damage types, most wanted first
     support_every: int | None = None                # take a support skill after this many damage skills
+    avoid: tuple[str, ...] = FARM_AVOID             # normalized name fragments never preferred
+    strict: bool = False                            # only the damage types listed in order (fire-only)
+
+
+# Named presets. The order is a soft synergy bias (no gear OCR). Shop stays wanted-only.
+PRESETS: dict[str, Build] = {
+    "shuriken": Build(PHYSICAL, ("shuriken", "bleed", "venom"),
+                      avoid=FARM_AVOID + ("deadly stars", "deadly star")),
+    "fire": Build(MAGIC, ("fire",), strict=True),
+    "poison": Build(PHYSICAL, ("venom", "bleed", "shuriken")),
+    "ice": Build(MAGIC, ("ice", "lightning", "fire")),
+    "lightning": Build(MAGIC, ("lightning", "fire", "ice")),
+    "sustain": Build(PHYSICAL, ("bleed", "venom", "shuriken"), support_every=3),
+}
 
 
 @dataclass
@@ -48,19 +66,47 @@ def _type_rank(skill: Skill, build: Build) -> int:
     return build.order.index(skill.damage_type) if skill.damage_type in build.order else len(build.order)
 
 
+def _avoided(skill: Skill, build: Build) -> bool:
+    name = normalize(skill.name)
+    return any(piece in name for piece in build.avoid)
+
+
+def _upgraded(skill: Skill, state: BuildState) -> int:
+    """0 when this run already took the skill (an upgrade beats a new card of the same type)."""
+    key = skill_key(skill.name)
+    if not key:
+        return 1
+    return 0 if any(skill_key(taken) == key for taken in state.taken) else 1
+
+
+def _damage_ok(skill: Skill, build: Build) -> bool:
+    if skill.role != DAMAGE or skill.nature != build.nature or _avoided(skill, build):
+        return False
+    # A strict preset (fire only) does not want other types, including untyped cards.
+    return not build.strict or skill.damage_type in build.order
+
+
 def ranked(skills: list[Skill], build: Build, state: BuildState) -> list[int]:
-    """Indices of the wanted skills, best first (empty if none is wanted)."""
-    damage = sorted((i for i, s in enumerate(skills) if s.role == DAMAGE and s.nature == build.nature),
-                    key=lambda i: (_type_rank(skills[i], build), _rarity(skills[i]), i))
+    """Indices of the wanted skills, best first (empty if none is wanted).
+
+    Type order first, then a skill this run already took (upgrade it), then rarity.
+    """
+    damage = sorted((i for i, s in enumerate(skills) if _damage_ok(s, build)),
+                    key=lambda i: (_type_rank(skills[i], build), _upgraded(skills[i], state), _rarity(skills[i]), i))
     if not state.wants_support(build):
         return damage
-    support = sorted((i for i, s in enumerate(skills) if s.role == SUPPORT), key=lambda i: (_rarity(skills[i]), i))
+    support = sorted((i for i, s in enumerate(skills) if s.role == SUPPORT and not _avoided(s, build)),
+                     key=lambda i: (_upgraded(skills[i], state), _rarity(skills[i]), i))
     return support + damage  # no support offered: the damage skill, and keep wanting support
 
 
-def fallback(skills: list[Skill]) -> list[int]:
-    """Rarest first, then top to bottom."""
-    return sorted(range(len(skills)), key=lambda i: (_rarity(skills[i]), i))
+def fallback(skills: list[Skill], build: Build | None = None) -> list[int]:
+    """Rarest first, then top to bottom. Avoided names are left out while anything else is offered."""
+    order = sorted(range(len(skills)), key=lambda i: (_rarity(skills[i]), i))
+    if build is None:
+        return order
+    kept = [i for i in order if not _avoided(skills[i], build)]
+    return kept or order
 
 
 def _preferred(skills: list[Skill], build: Build, state: BuildState) -> list[int]:
@@ -81,7 +127,7 @@ def choose(skills: list[Skill], build: Build, state: BuildState, can_reroll: boo
     wanted = ranked(skills, build, state)
     if wanted:  # untyped damage of the right nature, and no reroll left
         return wanted[0]
-    return fallback(skills)[0]
+    return fallback(skills, build)[0]
 
 
 def shop_order(skills: list[Skill], build: Build, state: BuildState, can_reroll: bool,
@@ -95,7 +141,7 @@ def shop_order(skills: list[Skill], build: Build, state: BuildState, can_reroll:
     if not wanted and can_reroll:
         return None
     if fill:
-        return wanted + [i for i in fallback(skills) if i not in wanted]
+        return wanted + [i for i in fallback(skills, build) if i not in wanted]
     preferred = _preferred(skills, build, state)
     if not preferred and can_reroll:
         return None

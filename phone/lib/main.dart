@@ -31,12 +31,14 @@ class BotApp extends StatelessWidget {
 /// Every option the user sets, saved between sessions (like data/settings.json on the desktop).
 class Options {
   String lang = 'es', mode = 'normal', source = 'latest', level = '1', nature = 'physical', supportEvery = '3';
-  bool full = false, loop = false, ads = false, support = false;
+  String eliteCost = '5', preset = 'custom';
+  bool full = false, loop = false, ads = false, support = false, skipFights = false;
   List<String> order = [...damageTypes];
 
   Map<String, Object> toJson() => {
         'lang': lang, 'mode': mode, 'source': source, 'level': level, 'nature': nature, 'support_every': supportEvery,
         'full': full, 'loop': loop, 'ads': ads, 'support': support, 'damage_order': order,
+        'elite_cost': eliteCost, 'skip_fights': skipFights, 'preset': preset,
       };
 
   /// Last session's choices; anything missing or invalid keeps its default.
@@ -52,6 +54,9 @@ class Options {
     loop = pick<bool>('loop', (_) => true) ?? loop;
     ads = pick<bool>('ads', (_) => true) ?? ads;
     support = pick<bool>('support', (_) => true) ?? support;
+    skipFights = pick<bool>('skip_fights', (_) => true) ?? skipFights;
+    eliteCost = pick<String>('elite_cost', const ['5', '10', '15'].contains) ?? eliteCost;
+    preset = pick<String>('preset', const ['custom', 'shuriken', 'fire', 'poison', 'ice', 'lightning', 'sustain'].contains) ?? preset;
     final saved = (s['damage_order'] as List?)?.cast<String>();
     if (saved != null && ([...saved]..sort()).join() == ([...damageTypes]..sort()).join()) order = saved;
   }
@@ -173,6 +178,9 @@ class _BotPageState extends State<BotPage> with WidgetsBindingObserver {
       'full': options.full,
       'loop': options.loop,
       'ads': options.ads,
+      'eliteCost': int.tryParse(options.eliteCost) ?? 5,
+      'skipFights': options.skipFights,
+      'preset': options.preset,
       'nature': options.nature,
       'order': options.order,
       'supportEvery': options.support && every != null && every > 0 ? every : null,
@@ -265,6 +273,8 @@ class _BotPageState extends State<BotPage> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Text(t('mode'), style: Theme.of(context).textTheme.titleSmall),
           radios([('normal', 'normal'), ('elite', 'elite')], o.mode, (v) => o.mode = v),
+          Text(t('elite_cost'), style: Theme.of(context).textTheme.titleSmall),
+          radios([('5', 'elite5'), ('10', 'elite10'), ('15', 'elite15')], o.eliteCost, (v) => o.eliteCost = v),
           Text(t('level'), style: Theme.of(context).textTheme.titleSmall),
           radios([('latest', 'latest'), ('beaten', 'beaten'), ('pending', 'pending'), ('stars', 'stars')], o.source, (v) => o.source = v),
           if (o.source == 'stars')
@@ -281,11 +291,22 @@ class _BotPageState extends State<BotPage> with WidgetsBindingObserver {
           check('loop', o.loop, (v) => o.loop = v),
           check('full', o.full, (v) => o.full = v),
           check('ads', o.ads, (v) => o.ads = v),
+          check('skip_fights', o.skipFights, (v) => o.skipFights = v),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(t('build_title'), style: Theme.of(context).textTheme.titleMedium),
+                Text(t('preset')),
+                radios([
+                  ('custom', 'preset_custom'),
+                  ('shuriken', 'preset_shuriken'),
+                  ('fire', 'preset_fire'),
+                  ('poison', 'preset_poison'),
+                  ('ice', 'preset_ice'),
+                  ('lightning', 'preset_lightning'),
+                  ('sustain', 'preset_sustain'),
+                ], o.preset, (v) => o.preset = v),
                 Text(t('build_nature')),
                 radios([('physical', 'physical'), ('magic', 'magic')], o.nature, (v) => o.nature = v),
                 const SizedBox(height: 6),

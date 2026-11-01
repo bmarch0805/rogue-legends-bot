@@ -48,13 +48,43 @@ object ModeScreens {
         return if (c.isNotEmpty()) a * 3600 + b * 60 + c.toInt() else a * 60 + b
     }
 
+    private val CLOCK_RE = Regex("(\\d+):(\\d{2})(?::(\\d{2}))?")
+
+    fun clockSeconds(text: String): Int? {
+        val m = CLOCK_RE.find(text) ?: return null
+        val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt(); val c = m.groupValues[3]
+        return if (c.isNotEmpty()) a * 3600 + b * 60 + c.toInt() else a * 60 + b
+    }
+
+    fun patrolElapsed(texts: List<Text>): Int? {
+        val timer = find(texts, L.PATROL_TIME) ?: return null
+        patrolSeconds(timer.norm)?.let { return it }
+        for (t in texts) {
+            val dy = t.center.y - timer.center.y
+            if (dy in 0..90 && kotlin.math.abs(t.center.x - timer.center.x) < 280) {
+                clockSeconds(t.norm)?.let { return it }
+            }
+        }
+        return null
+    }
+
     fun parsePatrol(texts: List<Text>): PatrolPopup? {
         val timer = find(texts, L.PATROL_TIME)
         if (timer == null || find(texts, L.QUICK_PATROL_TEXT) != null) return null
         val row = texts.filter { it.center.y in Config.PATROL_BUTTONS_Y }
         val claim = row.firstOrNull { matches(it, L.PATROL_CLAIM, exact = true) }
         val quick = row.firstOrNull { matches(it, L.QUICK_PATROL) }
-        return if (claim != null && quick != null) PatrolPopup(claim, quick, patrolSeconds(timer.norm)) else null
+        return if (claim != null && quick != null) PatrolPopup(claim, quick, patrolElapsed(texts)) else null
+    }
+
+    fun fightSkip(img: Frame?, texts: List<Text>): Text? {
+        if (img == null) return null
+        val button = find(texts, L.FIGHT_SKIP, exact = true) ?: return null
+        if (button.center.y < Config.FIGHT_SKIP_MIN_Y) return null
+        val lime = img.fraction(button.center.x - 120, button.center.y - 50, button.center.x + 120, button.center.y + 50) { r, g, b ->
+            g > 140 && r > 130 && b < 120 && g + 15 >= r
+        }
+        return if (lime > Config.SKIP_LIME_MIN_FRACTION) button else null
     }
 
     data class QuickPatrol(val video: Text?, val energy: Text?, val energyCost: Int = 0)

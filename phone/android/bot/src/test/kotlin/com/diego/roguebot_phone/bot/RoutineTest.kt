@@ -497,7 +497,7 @@ class RoutineTest {
         val login = listOf(t("roguelegend.io", 220, 130, 390, 170), t("Iniciar sesión", 500, 1200, 900, 1260))
         val r = make(ES_LOBBY, ES_MENU, DAILY_POPUP, login)
         device.apps.add("com.android.chrome")
-        assertThrows(NavigationError::class.java) { r.daily() }
+        assertEquals(Parts.DONE, r.daily())  // the popup is closed; mail is not left on the wrong window
         assertEquals(listOf("back"), device.actions)
         assertFalse(P(989, 1415) in device.taps)
     }

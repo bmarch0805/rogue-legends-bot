@@ -72,8 +72,9 @@ def test_freshly_opened_game_waits_for_its_lobby(monkeypatch):
 
 
 class FakeLobby:
-    def __init__(self, energy):
+    def __init__(self, energy, level_title=None):
         self.energy = energy
+        self.level_title = level_title
 
 
 class FakeNav:
@@ -153,6 +154,14 @@ def test_repeat_latest_pins_level_after_victory(monkeypatch):
     assert nav.started == ["detect", ("latest", 13), ("latest", 13), ("stars", 13)]
 
 
+def test_repeat_latest_pin_follows_the_lobby_when_the_start_read_was_low(monkeypatch):
+    """A stale "38" at the start must not stick when the lobby after the win shows ~77."""
+    nav = FakeNav(energy=10, latest=38)
+    nav.go_to_lobby = lambda: FakeLobby(nav.energy, "77. High End")
+    run_with(monkeypatch, nav, [V, V], RunRequest(Mode.NORMAL, None, repeat=True))
+    assert nav.started == ["detect", ("latest", 38), ("stars", 76)]
+
+
 def test_repeat_without_any_energy_is_an_error(monkeypatch):
     nav = FakeNav(energy=2)
     with pytest.raises(main.NavigationError, match="Not enough energy"):
@@ -163,7 +172,8 @@ class FakeRoutine:
     calls = patrols = 0
     patrol_wait = None  # unreadable counter: the patrol is opened after every level
 
-    def __init__(self, device=None, ocr=None, nav=None, ads=False, play_level=None, build=None, catalog=None):
+    def __init__(self, device=None, ocr=None, nav=None, ads=False, play_level=None, build=None, catalog=None,
+                 skip_fights=False):
         self.play_level = play_level
         self.nav = nav
         self.build = build

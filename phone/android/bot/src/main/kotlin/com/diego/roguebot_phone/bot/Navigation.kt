@@ -4,7 +4,13 @@ import kotlin.math.abs
 
 /** Level screens goToLobby plays out instead of failing (a level left running). */
 val ON_BOARD = setOf(LevelScreen.BOARD_READY, LevelScreen.AUTO_PLAY, LevelScreen.SHOP, LevelScreen.EVENT,
-    LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.FORTUNE_TELLER)
+    LevelScreen.DICE_DUEL, LevelScreen.FLIP_CARDS, LevelScreen.REVIVE, LevelScreen.FORTUNE_TELLER, LevelScreen.MONK)
+
+/** Energy for one elite run: the chosen tier, or the next lower one the counter can pay. */
+fun eliteSpend(chosen: Int, energy: Int): Int? {
+    val tier = if (chosen in Config.ELITE_COSTS) chosen else Config.ELITE_COST_DEFAULT
+    return Config.ELITE_COSTS.filter { it <= tier && it <= energy }.maxOrNull()
+}
 
 /** A level board (not fights or skill picks alone: dojo and raid fights have them too). */
 fun onBoard(img: Frame, texts: List<Text>): Boolean {
@@ -49,6 +55,7 @@ open class Navigator(
     val ads: Boolean = false,
     val clock: Clock = SystemClock,
     val debug: DebugSink = DebugSink { _, name -> name },
+    val eliteCost: Int = Config.ELITE_COST_DEFAULT,
 ) {
     var resumeLevel: (() -> Any)? = null  // plays an interrupted run to its end
 
@@ -363,18 +370,25 @@ open class Navigator(
             if (target != null && target.header.center.y < Config.LIST_BOTTOM - Config.HEADER_ABOVE_BUTTON) {
                 fail("Level $level is locked", c.first, ::LevelUnavailable)
             }
+            val lowest = numbers.min()
+            // Same frame is not the end of the list while the target is still above this page.
+            val above = level < lowest
             if (numbers == prevNumbers) {
-                stuck += 1
-                if (stuck >= SCROLL_STUCK_TRIES) {
-                    fail("Level $level not found (list ends at ${numbers.last()})", c.first, ::LevelUnavailable)
+                if (above) {
+                    Log.info("Star list still shows $numbers; level $level is above the lowest card, scrolling up again")
+                } else {
+                    stuck += 1
+                    if (stuck >= SCROLL_STUCK_TRIES) {
+                        fail("Level $level not found (list ends at ${numbers.last()})", c.first, ::LevelUnavailable)
+                    }
+                    Log.info("Star list still shows $numbers; scrolling again toward level $level")
                 }
-                Log.info("Star list still shows $numbers; scrolling again toward level $level")
             } else {
                 stuck = 0
                 Log.info("Star list shows $numbers; scrolling toward level $level")
             }
             prevNumbers = numbers
-            dragList(scrollDelta(cards, level))
+            dragList(if (above) -Config.MAX_DRAG else scrollDelta(cards, level))
         }
         fail("Level $level not reached after $MAX_SCROLLS scrolls", img!!)
     }
@@ -424,9 +438,7 @@ open class Navigator(
     internal fun setEliteCost(): Text {
         var (img, texts) = capture()
         val energy = Screens.parseEnergy(texts) ?: fail("Could not read the energy counter", img)
-        val affordable = Config.ELITE_COSTS.filter { it <= energy }
-        if (affordable.isEmpty()) fail("Not enough energy for an elite run ($energy)", img)
-        val target = affordable.max()
+        val target = eliteSpend(eliteCost, energy) ?: fail("Not enough energy for an elite run ($energy)", img)
         repeat(2 * Config.ELITE_COSTS.size) {
             val dialog = Screens.parseEliteDialog(texts) ?: fail("Elite dialog not recognized", img)
             if (dialog.cost == target) {

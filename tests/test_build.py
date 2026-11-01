@@ -143,6 +143,39 @@ def test_untyped_damage_rerolls_before_taking_the_top_card():
     assert choose(offer, build, BuildState(), can_reroll=False) == 0  # no reroll left: the untyped physical
 
 
+def test_named_presets_and_the_cards_they_refuse():
+    from roguebot.build import PRESETS
+    shuriken, fire, poison = PRESETS["shuriken"], PRESETS["fire"], PRESETS["poison"]
+    assert shuriken.order == ("shuriken", "bleed", "venom") and shuriken.nature == "physical"
+    assert fire.order == ("fire",) and fire.strict and fire.nature == "magic"
+    assert poison.order == ("venom", "bleed", "shuriken")
+    assert PRESETS["ice"].order[0] == "ice" and PRESETS["lightning"].order[0] == "lightning"
+    assert PRESETS["sustain"].support_every == 3
+    deadly = sk("Deadly Stars", "shuriken", rarity="legendary")
+    toss = sk("Toss", "shuriken")
+    assert choose([deadly, toss], shuriken, BuildState(), False) == 1
+    assert choose([deadly], shuriken, BuildState(), False) == 0  # only card: the pick still resolves
+    glass, dark, flame = sk("Glass Cannon"), sk("Darkside"), sk("Fireball", "fire")
+    assert choose([glass, flame], fire, BuildState(), False) == 1
+    assert choose([dark, flame], fire, BuildState(), False) == 1
+    ice = sk("Icicle", "ice")
+    assert choose([ice], fire, BuildState(), True) is None  # fire only: reroll, don't take ice
+    assert choose([ice, flame], fire, BuildState(), True) == 1
+
+
+def test_an_already_taken_skill_is_upgraded_ahead_of_a_new_one():
+    from roguebot.build import PRESETS
+    build = PRESETS["shuriken"]
+    new = sk("Fresh Toss", "shuriken", rarity="legendary")
+    old = sk("Toss", "shuriken")
+    state = BuildState(taken=["Toss"])
+    assert choose([new, old], build, state, False) == 1
+    # A new shuriken still beats an upgrade of a later type.
+    venom = sk("Poison", "venom", rarity="legendary")
+    state = BuildState(taken=["Poison"])
+    assert choose([venom, old], build, state, False) == 1
+
+
 def test_shop_does_not_buy_off_build_cards():
     build = Build("physical", ("shuriken", "venom", "bleed", "ice", "fire", "lightning"))
     shuriken = sk("toss", "shuriken")

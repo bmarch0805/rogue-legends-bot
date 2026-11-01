@@ -292,6 +292,32 @@ def test_changelog_is_hidden_until_toggled(app):
     assert not app.changelog_shown and not app.changelog.grid_info()
 
 
+def test_elite_cost_skip_and_preset_are_saved(app, tmp_path, monkeypatch):
+    from roguebot import settings
+    from roguebot.build import PRESETS
+    monkeypatch.setattr(app, "settings_path", tmp_path / "settings.json")
+    try:
+        app.elite_cost.set("10")
+        app.skip_fights.set(True)
+        app.preset_label.set("Fire")
+        app._on_preset()
+        app._save_options()
+        saved = settings.load(tmp_path / "settings.json")
+        assert saved["elite_cost"] == 10 and saved["skip_fights"] is True and saved["preset"] == "fire"
+        app.elite_cost.set("5")
+        app.skip_fights.set(False)
+        app.preset.set("custom")
+        app._restore_options(saved)
+        assert app.elite_cost.get() == "10" and app.skip_fights.get() is True
+        assert app.preset.get() == "fire" and app.build() == PRESETS["fire"]
+    finally:
+        app.elite_cost.set("5")
+        app.skip_fights.set(False)
+        app.preset.set("custom")
+        app.nature.set("physical")
+        app.support.set(False)
+
+
 def test_watch_ads_option_explains_it_needs_ad_skip(app):
     assert app.ads.get() is False  # off by default
     assert "(only if the account has bought the skip ads option)" in TEXTS["en"]["ads"]
