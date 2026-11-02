@@ -58,3 +58,4 @@ See `CLAUDE.md` for how it works inside: architecture, game knowledge, and every
 2. Shop logic won't use low amount of coins to refresh, it will be added in the next update.
 3. "Last Unlocked" behavior will be upgraded to continue running the most recent unlock, not rerun the last beaten one until a loss occurs.
 4. Daily rewards, still broken (VIP)
+5. World 2 Maps have path Selection, currently the bot doesn't interact with it and closes the game. Looking up the best path to take for farming.
